@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clickaway"
+version = "0.1.0"
+description = "One mouse. Two computers. Private Windows-to-Mac input sharing."
+requires-python = ">=3.12"
+dependencies = [
+  "PySide6>=6.8,<7",
+  "cryptography>=44,<51",
+  "pyobjc-framework-Quartz>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-Cocoa>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-ApplicationServices>=11,<13; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.16,<7"]
+
+[project.gui-scripts]
+clickaway = "clickaway.app:main"
+
+[tool.setuptools.packages.find]
+include = ["clickaway*"]
+
+[tool.setuptools.package-data]
+clickaway = ["assets/*"]
