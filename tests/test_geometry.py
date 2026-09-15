@@ -45,6 +45,17 @@ class GeometryTests(unittest.TestCase):
         self.assertFalse(p.at_edge(-2560, 1640))
         self.assertFalse(p.at_edge(-1280, 900))
 
+    def test_overshoot_counts_only_past_an_open_edge(self):
+        left = Portal(self.pc, self.mac)
+        self.assertFalse(left.at_edge(-2563, 900))
+        self.assertTrue(left.at_edge(-2563, 900, beyond=True))
+        self.assertFalse(left.at_edge(-2563, 199, beyond=True))
+        self.assertFalse(left.at_edge(4, 900, beyond=True))
+        right = Portal(self.pc, self.mac, "right")
+        self.assertTrue(right.at_edge(-2, 900))
+        self.assertFalse(right.at_edge(4, 900))
+        self.assertTrue(right.at_edge(4, 900, beyond=True))
+
     def test_reject_invalid_geometry(self):
         for width in (0, -2, float("nan"), float("inf"), 99999):
             with self.assertRaises(ValueError):

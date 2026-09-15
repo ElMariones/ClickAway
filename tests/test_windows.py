@@ -75,6 +75,27 @@ class WindowsTests(unittest.TestCase):
         self.controller._handle(0x200, self.data(900, 500))
         self.assertFalse(self.controller.remote)
 
+    def test_pushing_past_the_desktop_edge_enters_remote(self):
+        # Hooks report the unclamped position while the cursor itself stays at x = 0.
+        self.api.MonitorFromPoint.return_value = None
+        self.controller._handle(0x200, self.data(2))
+        self.assertTrue(self.controller._handle(0x200, self.data(-3)))
+        self.assertTrue(self.controller.remote)
+
+    def test_repeated_pushes_against_the_edge_enter_after_cooldown(self):
+        self.api.MonitorFromPoint.return_value = None
+        self.controller.cooldown = float("inf")
+        self.controller._handle(0x200, self.data(-3))
+        self.assertFalse(self.controller._handle(0x200, self.data(-3)))
+        self.controller.cooldown = 0
+        self.assertTrue(self.controller._handle(0x200, self.data(-3)))
+
+    def test_moving_onto_a_neighboring_windows_display_does_not_enter(self):
+        self.api.MonitorFromPoint.return_value = 1234
+        self.controller._handle(0x200, self.data(2))
+        self.assertFalse(self.controller._handle(0x200, self.data(-3)))
+        self.assertFalse(self.controller.remote)
+
     def test_held_local_button_blocks_crossing(self):
         self.api.GetAsyncKeyState.return_value = -32768
         self.controller._handle(0x200, self.data(10))

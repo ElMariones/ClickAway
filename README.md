@@ -29,18 +29,23 @@ interface, Outfit typography, animated desk arrangements and hover effects.
 
 ## Download
 
-Open [GitHub Actions](https://github.com/ElMariones/ClickAway/actions/workflows/build.yml),
-select a successful run and download the matching artifact:
+Download both apps from the [latest GitHub release](https://github.com/ElMariones/ClickAway/releases/latest):
 
-- `ClickAway-Windows-x64`: unzip both the artifact and the app archive, then open
+- **Windows 11 (x64):** `ClickAway-Windows-x64.zip`. Unzip it and open
   `ClickAway/ClickAway.exe`. Keep the `_internal` folder beside the executable.
-- `ClickAway-macOS-AppleSilicon`: unzip the artifact and app archive, then move
-  `ClickAway.app` into Applications. The Mac build runs natively on Apple Silicon.
+- **Mac with Apple Silicon (M1 or newer):** `ClickAway-macOS-AppleSilicon.zip`.
+  Unzip it and move `ClickAway.app` into Applications. It runs natively on arm64.
 
-These are development builds. The Windows executable is unsigned and the Mac app
-is ad-hoc signed, **not Apple-notarized**. macOS may require an explicit approval
-in System Settings → Privacy & Security to open a downloaded development app.
-You can also build from source on each computer using the instructions below.
+`SHA256SUMS.txt` on the release page lets you verify both downloads.
+
+These are development builds. The Windows executable is unsigned, so SmartScreen
+may ask you to choose **More info → Run anyway**. The Mac app is ad-hoc signed and
+**not Apple-notarized**, so macOS blocks the first launch. Open System Settings →
+Privacy & Security, click **Open Anyway** next to ClickAway and confirm.
+
+Builds of every commit to `main` are also kept for 30 days as
+[GitHub Actions artifacts](https://github.com/ElMariones/ClickAway/actions/workflows/build.yml)
+(zipped once more by GitHub). You can also build from source using the instructions below.
 
 ## Setup
 
@@ -146,7 +151,8 @@ python3 -m venv .venv
 
 Build the distributable archive with `python scripts/build.py` from that virtual
 environment. It appears under `dist/`. The GitHub workflow builds Windows x64 and
-macOS arm64 separately. Shipping a notarized Mac build requires an Apple Developer
+macOS arm64 separately; pushing a version tag such as `v0.1.0` also publishes both
+archives as a GitHub release. Shipping a notarized Mac build requires an Apple Developer
 signing identity and notarization credentials, which are not stored in this repo.
 
 ## Development

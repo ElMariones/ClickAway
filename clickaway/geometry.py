@@ -32,11 +32,15 @@ class Portal:
         self.local, self.remote, self.side, self.speed = local, remote, side, speed
         self.x = self.y = 0.0
 
-    def at_edge(self, x, y):
+    def at_edge(self, x, y, beyond=False):
+        """``beyond`` accepts overshoot past an edge with no other display behind it."""
         s = self.local
-        if not s.y <= y < s.y + s.height or not s.x <= x < s.x + s.width:
+        if not s.y <= y < s.y + s.height:
             return False
-        return x <= s.x + 1 if self.side == "left" else x >= s.x + s.width - 2
+        if self.side == "left":
+            return s.x <= x <= s.x + 1 or (beyond and x < s.x)
+        right = s.x + s.width
+        return right - 2 <= x < right or (beyond and x >= right)
 
     def enter(self, local_y):
         self.x = self.remote.width - 3 if self.side == "left" else 2.0

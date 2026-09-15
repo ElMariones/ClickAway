@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 
-from .geometry import Portal, Screen
+from .geometry import Portal, Screen, clamp
 
 user32 = C.WinDLL("user32", use_last_error=True)
 kernel32 = C.WinDLL("kernel32", use_last_error=True)
@@ -51,16 +51,10 @@ user32.SetCursor.argtypes = [W.HANDLE]
 user32.SetCursor.restype = W.HANDLE
 user32.LoadCursorW.argtypes = [W.HINSTANCE, C.c_void_p]
 user32.LoadCursorW.restype = W.HANDLE
+user32.MonitorFromPoint.argtypes = [W.POINT, W.DWORD]
+user32.MonitorFromPoint.restype = W.HANDLE
 kernel32.GetModuleHandleW.argtypes = [W.LPCWSTR]
 kernel32.GetModuleHandleW.restype = W.HMODULE
-
-
-def enable_dpi_awareness():
-    try:
-        user32.SetProcessDpiAwarenessContext.argtypes = [C.c_void_p]
-        user32.SetProcessDpiAwarenessContext(C.c_void_p(-4))
-    except AttributeError:
-        user32.SetProcessDPIAware()
 
 
 def screens():
@@ -219,7 +213,15 @@ class MouseController:
         x, y = data.pt.x, data.pt.y
         if not self.remote:
             previous = self.last_point
-            self.last_point = (x, y)
+            s = self.portal.local
+            # Hooks see the attempted position before Windows clamps the cursor, so
+            # pushing into the desktop's outer edge reports x = -3 while it stays at 0.
+            beyond = (
+                message == 0x200
+                and not s.x <= x < s.x + s.width
+                and not user32.MonitorFromPoint(data.pt, 0)
+            )
+            self.last_point = (clamp(x, s.x, s.x + s.width - 1) if beyond else x, y)
             toward = previous and (
                 x < previous[0] if self.portal.side == "left" else x > previous[0]
             )
@@ -229,12 +231,11 @@ class MouseController:
                 and toward
                 and not held
                 and time.monotonic() >= self.cooldown
-                and self.portal.at_edge(x, y)
+                and self.portal.at_edge(x, y, beyond)
             ):
                 px, py = self.portal.enter(y)
                 if not self._send({"type": "enter", "x": px, "y": py}):
                     return False
-                s = self.portal.local
                 self.anchor = (round(s.x + s.width / 2), round(s.y + s.height / 2))
                 self.remote = True
                 if not user32.SetCursorPos(*self.anchor):
