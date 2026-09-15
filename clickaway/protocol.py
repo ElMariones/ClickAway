@@ -1,8 +1,6 @@
 """Versioned, bounded JSON messages over an authenticated TLS socket."""
 
-import base64
 import hashlib
-import ipaddress
 import json
 import math
 import queue
@@ -12,8 +10,10 @@ import struct
 import threading
 import time
 
+from .pake import KEY_BYTES
+
 PORT = 49624
-VERSION = 1
+VERSION = 2
 MAX_TEXT = 64 * 1024
 MAX_FRAME = 400 * 1024  # JSON may expand a Unicode character into escape sequences.
 
@@ -46,25 +46,35 @@ def receive(sock):
     return message
 
 
+def _hex(value, length):
+    return isinstance(value, str) and re.fullmatch(f"[a-f0-9]{{{length}}}", value)
+
+
+def _dimensions(m):
+    for key in ("width", "height"):
+        if (
+            type(m.get(key)) not in (int, float)
+            or not math.isfinite(m[key])
+            or not 100 <= m[key] <= 32768
+        ):
+            raise ValueError("Invalid display dimensions")
+
+
 def validate(m):
     if not isinstance(m, dict) or not isinstance(m.get("type"), str):
         raise ValueError("Invalid message")
     kind = m["type"]
-    if kind in ("hello", "ready"):
+    if kind in ("hello", "verify", "ready"):
         if m.get("version") != VERSION:
             raise ValueError("Different ClickAway versions; update both apps")
-        if kind == "hello":
-            if not isinstance(m.get("token"), str) or not re.fullmatch(
-                r"[a-f0-9]{64}", m["token"]
-            ):
-                raise ValueError("Invalid pairing key")
-            for key in ("width", "height"):
-                if (
-                    type(m.get(key)) not in (int, float)
-                    or not math.isfinite(m[key])
-                    or not 100 <= m[key] <= 32768
-                ):
-                    raise ValueError("Invalid display dimensions")
+        if kind != "ready" and not _hex(m.get("key"), 2 * KEY_BYTES):
+            raise ValueError("Invalid key exchange")
+        if kind == "verify" and not _hex(m.get("proof"), 64):
+            raise ValueError("Invalid password proof")
+    elif kind == "confirm":
+        if not _hex(m.get("proof"), 64):
+            raise ValueError("Invalid password proof")
+        _dimensions(m)
     elif kind in ("enter", "move"):
         for key in ("x", "y"):
             if (
@@ -98,37 +108,6 @@ def validate(m):
             raise ValueError("Invalid screen layout")
     elif kind not in ("ping", "leave"):
         raise ValueError("Unknown message type")
-
-
-def pairing_code(host, fingerprint, token, port=PORT):
-    payload = json.dumps(
-        {"host": host, "port": port, "fingerprint": fingerprint, "token": token},
-        separators=(",", ":"),
-    ).encode()
-    return "CA1-" + base64.urlsafe_b64encode(payload).decode().rstrip("=")
-
-
-def parse_pairing(code):
-    code = "".join(code.split())
-    if not code.startswith("CA1-") or len(code) > 2048:
-        raise ValueError("Paste the complete CA1- connection code from Windows")
-    try:
-        data = json.loads(
-            base64.b64decode(
-                code[4:] + "=" * (-len(code[4:]) % 4), altchars=b"-_", validate=True
-            )
-        )
-        ipaddress.IPv4Address(data["host"])
-        if type(data["port"]) is not int or not 1024 <= data["port"] <= 65535:
-            raise ValueError()
-        if not all(
-            isinstance(data[k], str) and re.fullmatch(r"[a-f0-9]{64}", data[k])
-            for k in ("fingerprint", "token")
-        ):
-            raise ValueError()
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("That connection code is incomplete or invalid") from exc
-    return data
 
 
 def fingerprint(cert_der):

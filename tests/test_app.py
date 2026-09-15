@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from PySide6.QtWidgets import QApplication
-from clickaway.app import App
+from clickaway.app import App, NetworkPicker
 
 
 class AppTests(unittest.TestCase):
@@ -25,11 +25,22 @@ class AppTests(unittest.TestCase):
         self.read = self.clip_patch.start()
         self.addCleanup(self.clip_patch.stop)
 
-    def test_pairing_codes_and_oversized_text_are_never_synced(self):
-        for text in ("CA1-secret", "é" * 65536):
-            self.read.return_value = text
-            self.window._clipboard_tick()
+    def test_oversized_text_is_never_synced(self):
+        self.read.return_value = "é" * 65536
+        self.window._clipboard_tick()
         self.peer.send.assert_not_called()
+
+    def test_network_picker_keeps_the_selected_address_when_refreshed(self):
+        networks = [
+            ("Wi-Fi: Home · 192.168.1.20", "192.168.1.20"),
+            ("Ethernet · 10.0.0.5", "10.0.0.5"),
+        ]
+        picker = NetworkPicker(lambda: list(networks))
+        picker.setCurrentIndex(1)
+        networks.reverse()
+        picker.refresh()
+        self.assertEqual(picker.currentData(), "10.0.0.5")
+        self.assertEqual(picker.currentText(), "Ethernet · 10.0.0.5")
 
     def test_clipboard_is_sent_once_and_only_while_enabled(self):
         self.read.return_value = "A new copy"

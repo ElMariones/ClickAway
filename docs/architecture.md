@@ -2,12 +2,15 @@
 
 ## Roles
 
-The Windows companion hosts a TCP listener. The Mac connects to that listener and
-announces its selected display's logical size. Windows owns the portal geometry;
-the Mac injects absolute Quartz coordinates offset into the selected display.
+The Windows companion hosts a TCP listener and answers discovery broadcasts. The
+Mac finds it, pairs using the shared password and announces its selected display's
+logical size. Windows owns the portal geometry; the Mac injects absolute Quartz
+coordinates offset into the selected display.
 
 `MouseController` runs a Win32 low-level hook and global hotkey on a dedicated
 message-loop thread. Hardware motion at the configured edge enters the portal.
+The hook reports the attempted pointer position before Windows clamps it, so a push
+past an edge with no other display behind it also counts as reaching the edge.
 While remote, the Windows cursor is parked in the center of the selected display,
 mouse events are suppressed locally, and deltas are measured relative to that
 anchor. Injected events are ignored to avoid processing the app's own cursor warp.
@@ -24,35 +27,66 @@ two adapters. Worker callbacks reach the UI through queued Qt signals. Clipboard
 access stays on the Qt main thread and polls at 650 ms. Incoming clipboard text
 updates the local baseline so it is not echoed back.
 
+The Windows network list comes from `GetAdaptersAddresses`. Connected Wi-Fi adapters
+are labeled with their SSID from `WlanQueryInterface`; if Windows withholds the SSID
+(for example when location access is off), the adapter name is shown instead.
+
 ## Connection lifecycle
 
-1. Start sharing: create a new ephemeral ECDSA certificate and 256-bit token.
-2. Windows emits a `CA1-` code containing IPv4 address, TCP port, certificate SHA-256
-   fingerprint and token. The user transfers it privately to the Mac.
-3. Mac opens TLS and verifies the exact certificate fingerprint before sending
-   the token. CA/hostname checks are replaced by this explicit certificate pin.
-4. Windows checks the token in constant time and accepts one peer. Failed clients
-   cannot inject events, change the clipboard or evict an existing paired session.
-5. Each side runs one reader and one writer. Idle writers send a heartbeat every
-   500 ms. Receive/liveness deadlines close a stalled session after roughly 3 seconds.
-6. Closing the session returns input to Windows and releases Mac buttons. Stopping
-   the listener invalidates the entire pairing identity. Nothing auto-connects.
+1. **Start sharing.** Windows takes a password of 6 to 64 characters (trimmed and
+   NFC-normalized), creates an ephemeral ECDSA certificate, and binds TCP and UDP
+   port 49624 on the chosen network's IPv4 address.
+2. **Discovery.** The Mac broadcasts `{"clickaway": "discover"}` to UDP 49624 on
+   255.255.255.255 for up to 2 seconds. Windows replies with its TCP port, protocol
+   version and computer name. If nothing answers, the user can type the PC's IP address.
+3. **TLS.** The Mac opens TLS without CA or hostname checks and records the SHA-256
+   digest of the certificate it received.
+4. **Password exchange.** Both sides run SPAKE2 (`clickaway/pake.py`) inside TLS:
+   - Group: the RFC 3526 2048-bit MODP safe prime, using its prime-order subgroup
+     of squares. `M` and `N` are SHAKE-256 outputs squared into that subgroup, so
+     nobody knows their discrete logarithms. `w` is SHA-512 of the password modulo
+     the group order.
+   - `hello` carries the Mac's element, `verify` carries Windows' element and proof,
+     and `confirm` carries the Mac's proof and display size. Received elements must
+     lie in the subgroup.
+   - The key is SHA-256 over a length-prefixed transcript of the certificate digest,
+     both elements, the shared element and `w`. Proofs are HMAC-SHA256 of that key
+     with a per-role label, compared in constant time.
+5. **Accept.** Windows sends `ready` and accepts one peer. Clients that fail cannot
+   inject events, change the clipboard or evict an existing session.
+6. **Session.** Each side runs one reader and one writer. Idle writers send a heartbeat
+   every 500 ms. Receive/liveness deadlines close a stalled session after about 3 seconds.
+7. **End.** Closing the session returns input to Windows and releases Mac buttons.
+   Stopping sharing discards the certificate and password. Nothing auto-connects.
 
-Certificates are loaded from a temporary directory and the temporary key files are
-removed immediately after loading into the TLS context. Pairing secrets are not
-stored in settings or logged. The code itself is a credential; anyone with it can
-pair while the session is listening. Generate a fresh session to revoke it.
+### What the password exchange protects
 
-## Wire protocol, version 1
+- The password never crosses the network, and a recorded exchange gives nothing to
+  test password guesses against offline.
+- Each connection attempt tests exactly one guess. Windows counts every exchange it
+  starts as a failure until the Mac proves the password, and stops sharing after 10.
+- A relay that terminates TLS with its own certificate changes the digest the Mac
+  sees, so confirmation fails on both sides without revealing the password.
+- A short password still limits security to those online guesses; pick something
+  that isn't trivially guessable.
+
+Certificates are loaded from a temporary directory and the key files are removed
+immediately after loading into the TLS context. The password is held in memory only
+while sharing and is never stored or logged.
+
+## Wire protocol, version 2
 
 TLS carries ordered frames: 4-byte big-endian length followed by UTF-8 JSON. Frames
 are limited to 400 KiB (allowing escaped control characters in a 64 KiB clipboard).
-Schema validation rejects unknown event types, non-finite coordinates, bad button
-states, invalid dimensions and oversized text before native event handling.
+Schema validation rejects unknown event types, malformed keys and proofs, non-finite
+coordinates, bad button states, invalid dimensions and oversized text before native
+event handling.
 
 | Message | Direction | Fields |
 | --- | --- | --- |
-| `hello` | Mac → Windows | `version`, `token`, `width`, `height` |
+| `hello` | Mac → Windows | `version`, `key` (SPAKE2 element, 512 hex digits) |
+| `verify` | Windows → Mac | `version`, `key`, `proof` (64 hex digits) |
+| `confirm` | Mac → Windows | `proof`, `width`, `height` |
 | `ready` | Windows → Mac | `version` |
 | `layout` | Windows → Mac | `side`, `speed` |
 | `enter`, `move` | Windows → Mac | `x`, `y` relative to Mac display |
@@ -62,10 +96,15 @@ states, invalid dimensions and oversized text before native event handling.
 | `clipboard` | Both | `text`, UTF-8 byte limit 65,536 |
 | `ping` | Both | — |
 
+Discovery uses single UDP datagrams of JSON outside TLS: the probe
+`{"clickaway": "discover", "version": 2}` and the reply
+`{"clickaway": "here", "version": 2, "port": 49624, "name": "<computer name>"}`.
+A reply only says that a ClickAway host is sharing; pairing still requires the password.
+
 Outbound queues are bounded at 1,024 messages. Congestion disconnects the peer
 rather than accumulating an unbounded input delay. TCP preserves click/motion
-ordering, but Wi-Fi loss can cause head-of-line latency. v0.1 prioritizes a simple,
-auditable encrypted transport over a custom reliable UDP protocol.
+ordering, but Wi-Fi loss can cause head-of-line latency. ClickAway prioritizes a
+simple, auditable encrypted transport over a custom reliable UDP protocol.
 
 ## Persisted data
 
@@ -74,5 +113,5 @@ Only side, speed and clipboard preference are saved in an atomic JSON replacemen
 - Windows: `%LOCALAPPDATA%/ClickAway/settings.json`
 - Mac: `~/Library/Application Support/ClickAway/settings.json`
 
-There is no saved connection history, content history, password, token, certificate,
+There is no saved connection history, content history, password, certificate,
 analytics endpoint or cloud account.

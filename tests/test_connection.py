@@ -4,9 +4,12 @@ import threading
 import time
 import unittest
 
-from clickaway.connection import Host, connect
+from clickaway.connection import Host, connect, discover
 from clickaway.geometry import Screen
-from clickaway.protocol import Peer
+from clickaway.pake import PairingError
+from clickaway.protocol import VERSION, Peer
+
+PASSWORD = "desk lamp"
 
 
 class ConnectionTests(unittest.TestCase):
@@ -15,27 +18,29 @@ class ConnectionTests(unittest.TestCase):
         self.host_messages = queue.Queue()
         self.mac_messages = queue.Queue()
         self.closed = queue.Queue()
+        self.locked = threading.Event()
         self.host = Host(
-            lambda peer, hello: self.accepted.put(peer),
+            PASSWORD,
+            lambda peer, confirm: self.accepted.put((peer, confirm)),
             self.host_messages.put,
             self.closed.put,
+            on_locked=self.locked.set,
+            address="127.0.0.1",
             port=0,
+            discovery_port=0,
+            max_failures=3,
         )
         self.host.start()
         self.addCleanup(self.host.stop)
-        self.details = {
-            "host": "127.0.0.1",
-            "port": self.host.port,
-            "fingerprint": self.host.fingerprint,
-            "token": self.host.token,
-        }
 
-    def client(self, details=None):
+    def client(self, password=PASSWORD):
         peer = connect(
-            details or self.details,
+            password,
             Screen(0, 0, 1512, 982),
             self.mac_messages.put,
             self.closed.put,
+            address="127.0.0.1",
+            port=self.host.port,
         )
         self.addCleanup(peer.close)
         peer.start()
@@ -43,7 +48,8 @@ class ConnectionTests(unittest.TestCase):
 
     def test_real_tls_connection_bidirectional_ordered_input_and_clipboard(self):
         mac = self.client()
-        pc = self.accepted.get(timeout=3)
+        pc, confirm = self.accepted.get(timeout=3)
+        self.assertEqual((confirm["width"], confirm["height"]), (1512, 982))
         events = [{"type": "enter", "x": 1509, "y": 420}]
         events += [{"type": "move", "x": 1400 - i, "y": 420} for i in range(200)]
         events += [
@@ -60,17 +66,42 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(self.host_messages.get(timeout=3), clipboard)
         self.assertIn(pc.sock.version(), ("TLSv1.2", "TLSv1.3"))
 
-    def test_wrong_certificate_pin_rejected_before_authentication(self):
-        with self.assertRaisesRegex(ValueError, "identity changed"):
-            self.client({**self.details, "fingerprint": "0" * 64})
+    def test_wrong_password_is_rejected_and_listener_survives(self):
+        with self.assertRaises(PairingError):
+            self.client("desk lamb")
         self.assertTrue(self.accepted.empty())
-        self.client()  # A failed pairing does not kill the listener.
+        self.client()
         self.accepted.get(timeout=3)
+        self.assertFalse(self.locked.is_set())
 
-    def test_wrong_pairing_secret_rejected(self):
-        with self.assertRaises((ConnectionError, OSError)):
-            self.client({**self.details, "token": "0" * 64})
+    def test_repeated_wrong_passwords_stop_sharing(self):
+        for _ in range(3):
+            with self.assertRaises((PairingError, ConnectionError)):
+                self.client("not the password")
+        self.assertTrue(self.locked.wait(3))
+        with self.assertRaises(ConnectionError):
+            self.client()
         self.assertTrue(self.accepted.empty())
+
+    def test_short_password_cannot_start_sharing(self):
+        with self.assertRaises(ValueError):
+            Host("12345", None, None, None, address="127.0.0.1", port=0)
+
+    def test_discovery_finds_the_sharing_computer(self):
+        found = discover(
+            port=self.host.discovery_port, targets=("127.0.0.1",), timeout=2
+        )
+        self.assertEqual(
+            [(f["address"], f["port"], f["version"]) for f in found],
+            [("127.0.0.1", self.host.port, VERSION)],
+        )
+        self.host.stop()
+        self.assertEqual(
+            discover(
+                port=self.host.discovery_port, targets=("127.0.0.1",), timeout=0.5
+            ),
+            [],
+        )
 
     def test_disconnect_notifies_and_allows_reconnect(self):
         first = self.client()

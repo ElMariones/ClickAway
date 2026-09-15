@@ -2,30 +2,29 @@
 
 # ClickAway
 
-**One mouse, two happy computers.**
+Use your Windows mouse on the Mac next to it. Move the pointer past the shared
+screen edge to control the Mac, and move it back to return to Windows. Plain text
+copied on one computer can be pasted on the other. The computers connect directly
+over your local network.
 
-Move your Windows mouse across the screen edge to use the Mac beside it. Move
-back to return to Windows. Copy text on either computer and paste it on the other.
-ClickAway connects directly over your Wi-Fi or Ethernet network.
+ClickAway is made for a Windows 11 PC and an Apple Silicon Mac.
 
-Built for a Windows 11 PC and an Apple Silicon Mac, with a cozy blue-and-yellow
-interface, Outfit typography, animated desk arrangements and hover effects.
+![ClickAway on Windows](docs/images/windows.png)
 
-![ClickAway Windows companion](docs/images/windows.png)
+## Features
 
-## What it does
-
-- Windows → Mac mouse movement, left/right/middle clicks, double-clicks, dragging,
-  wheel scrolling and extra mouse buttons (app support for extra buttons varies).
-- Mac on the left by default; change it to the right in Windows at any time.
-- Choose the Windows display with the shared edge and the Mac display to control.
-- Adjust pointer speed for your screen sizes and Retina scaling.
-- Bidirectional **plain-text clipboard** sync, up to 64 KiB per copy; disable it
-  independently on either computer. Only new copies made after connecting sync.
-- **Ctrl + Alt + F12** on the Windows keyboard returns control immediately.
-- Certificate-pinned TLS and a random 256-bit connection key. No account, relay,
-  cloud service, telemetry, or Internet connection is needed after installation.
-- On disconnect, held Mac buttons are released and Windows input is restored.
+- Mouse movement, left, right and middle clicks, double-clicks, dragging, scrolling
+  and extra mouse buttons (whether extra buttons do anything depends on the Mac app).
+- Mac on the left or right of the PC. Pick the display with the shared edge on
+  Windows and the display to control on the Mac.
+- Adjustable pointer speed for different screen sizes and Retina scaling.
+- Plain-text clipboard sync in both directions, up to 64 KiB per copy. It can be
+  turned off on either computer, and only copies made after connecting are synced.
+- **Ctrl + Alt + F12** on the Windows keyboard returns the pointer immediately.
+- Pairing with a password you choose. The password never crosses the network: it is
+  checked with SPAKE2 inside a TLS connection, so each connection attempt can test
+  only one guess. No account, cloud service or telemetry.
+- On disconnect, held Mac mouse buttons are released and Windows input is restored.
 
 ## Download
 
@@ -36,7 +35,8 @@ Download both apps from the [latest GitHub release](https://github.com/ElMarione
 - **Mac with Apple Silicon (M1 or newer):** `ClickAway-macOS-AppleSilicon.zip`.
   Unzip it and move `ClickAway.app` into Applications. It runs natively on arm64.
 
-`SHA256SUMS.txt` on the release page lets you verify both downloads.
+`SHA256SUMS.txt` on the release page lets you verify both downloads. Install the
+same version on both computers; versions with different pairing protocols can't connect.
 
 These are development builds. The Windows executable is unsigned, so SmartScreen
 may ask you to choose **More info → Run anyway**. The Mac app is ad-hoc signed and
@@ -51,78 +51,81 @@ Builds of every commit to `main` are also kept for 30 days as
 
 ### 1. On Windows
 
-1. Connect both computers to the same Wi-Fi network and open ClickAway.
-2. Choose **Mac on the left** or **Mac on the right** to match your desk.
-3. Select your Windows monitor. Its shared edge should face the Mac.
-4. Select your PC's Wi-Fi IPv4 address from the list. If you have several network
-   adapters, use the address shown under Windows Settings → Network & internet →
-   Wi-Fi → your network's properties. You can enter it manually.
-5. Click **Start sharing**. If Windows Firewall asks, allow ClickAway on your
-   private/home network. It listens on **TCP port 49624**.
-6. Click **Copy connection code**. Transfer this code privately to your Mac, for
-   example through a note you can already open on both computers. The initial
-   pairing cannot use ClickAway's clipboard because the apps are not connected yet.
+1. Connect both computers to the same network and open ClickAway.
+2. Under **Layout**, choose **Mac on the left** or **Mac on the right**, and pick the
+   Windows display whose edge faces the Mac.
+3. Under **Connection**, pick the network the Mac is on. Wi-Fi networks are listed by
+   name, followed by this PC's IP address on that network.
+4. Type a password of at least 6 characters and click **Start sharing**.
+5. If Windows Firewall asks, allow ClickAway. If Windows treats your Wi-Fi as a
+   *Public* network, allow public networks too, or set the network to *Private* in
+   Settings → Network & internet → Wi-Fi → your network. ClickAway uses TCP and UDP
+   port 49624.
 
-### 2. On your Mac
+### 2. On the Mac
 
 1. Open ClickAway from Applications.
-2. Click **Allow mouse control**. In System Settings → Privacy & Security →
-   Accessibility, enable **ClickAway**. If you run from source, macOS may name the
-   Python interpreter or Terminal instead; the packaged app has a stable identity.
-3. If macOS asks for Local Network access, allow it.
-4. Select the Mac display to control and paste the complete `CA1-` connection code.
-5. Click **Connect to Windows**. Both apps should show **Connected**.
+2. Click **Allow mouse control** and turn on ClickAway in System Settings →
+   Privacy & Security → Accessibility.
+3. Pick the Mac display to control.
+4. Type the same password and click **Connect**. If macOS asks to find devices on
+   your local network, allow it, then click **Connect** again.
+5. ClickAway looks for the PC automatically. If it isn't found, a **Windows IP
+   address** field appears. Type the address shown in the Windows app's status
+   (for example `192.168.1.20`) and connect again.
 
-![ClickAway Mac companion](docs/images/mac.png)
+![ClickAway on the Mac](docs/images/mac.png)
 
-### 3. Enjoy your desk
+### 3. Using it
 
-Move to the shared Windows screen edge. Your mouse now controls the Mac. To return,
-cross the Mac's corresponding edge. Crossings preserve your relative screen height.
-Use **Ctrl + Alt + F12** on Windows whenever you need to get back immediately.
+Move the pointer past the shared edge of the Windows display to control the Mac, and
+back across the Mac's edge to return. The pointer keeps its relative height. Press
+**Ctrl + Alt + F12** on Windows to return immediately.
 
-Copy plain text normally on either machine, then paste using that machine's
-keyboard or a context menu. Keyboard input itself stays on its original computer.
-The apps may be minimized while sharing; closing either app ends the connection.
+Copy plain text on either computer and paste it on the other with that computer's
+keyboard. The keyboard itself stays with its own computer. Both apps can be
+minimized; closing either one ends the connection.
 
-Stopping sharing invalidates the connection code. After a restart, generate a new
-one. After a temporary connection loss, click Copy connection code on Windows and
-connect again on the Mac. ClickAway deliberately requires a fresh connection action
-instead of unexpectedly taking over your mouse after a network interruption.
+If the connection drops, click **Connect** on the Mac again; the password keeps
+working while Windows is sharing. Stopping sharing ends it. After 10 wrong password
+attempts, Windows stops sharing until you start it again.
 
 ## Troubleshooting
 
-| What you see | What to check |
+| Problem | What to check |
 | --- | --- |
-| Connection times out | Same LAN, correct Wi-Fi IP, and Windows Firewall allowing TCP 49624. Guest Wi-Fi/client isolation and some VPNs block direct device communication. |
-| Identity changed | Stop sharing and generate a new code on Windows. Don't edit a code to bypass the identity check. |
-| Connected but the Mac does not click | Enable Accessibility for the exact ClickAway app you are running. After replacing an unsigned build, remove the old Accessibility entry and add the new app if necessary. |
-| Mouse doesn't cross | Choose the correct Windows monitor and edge; release held mouse buttons and move a little inward before crossing again. |
-| Movement feels too fast/slow | Adjust Pointer speed on Windows; physical PC pixels and Mac display points may differ. |
-| Clipboard doesn't sync | Enable it on both computers, copy new plain text after connecting, and keep it under 64 KiB. Images and files aren't supported. |
-| Displays changed | Reconnect after changing display resolution, arrangement, or plugging in a monitor. The app pauses sharing when it detects a display change. |
-| Shortcut cannot register | Close another ClickAway instance or an app using Ctrl+Alt+F12, then start sharing again. |
+| The Mac can't find the Windows PC | Both computers on the same network, sharing is on, and Windows Firewall allows ClickAway (including public networks if your Wi-Fi is set to Public). Guest Wi-Fi, client isolation and some VPNs stop devices from seeing each other. Typing the PC's IP address skips the search. |
+| Wrong password | Passwords are case-sensitive. Spaces at the start and end are ignored. |
+| Sharing stopped on its own | 10 wrong password attempts stop sharing. Click **Start sharing** again. |
+| Connected but the Mac doesn't click | Turn on Accessibility for the exact ClickAway app you are running. After replacing an unsigned build, remove the old Accessibility entry and add the new app if necessary. |
+| The pointer doesn't cross | Choose the correct Windows display and side; release held mouse buttons and move a little inward before crossing again. |
+| Movement is too fast or slow | Adjust **Pointer speed** on Windows; physical PC pixels and Mac display points differ. |
+| The clipboard doesn't sync | Turn it on on both computers, copy new plain text after connecting, and keep it under 64 KiB. Images and files aren't supported. |
+| Displays changed | Connect again after changing resolution, arrangement or monitors. Sharing pauses when a display change is detected. |
+| The shortcut can't be registered | Close another ClickAway instance or an app using Ctrl+Alt+F12, then start sharing again. |
 
 ## Current scope and validation
 
-This is **v0.1**, a first working implementation intended for a two-computer desk.
-The target setup is Windows 11 25H2 and macOS Tahoe on an Apple Silicon Mac.
-Windows input-hook installation, screen enumeration, protocol integration and
-automated tests can be verified on the development PC. Full physical mouse
-crossing, Mac permissions, and behavior on the user's exact Tahoe build require
-hands-on testing on that Mac; a successful build alone does not prove these.
+This is **v0.2**, intended for a two-computer desk. The target setup is Windows 11
+25H2 and macOS Tahoe on an Apple Silicon Mac. Windows input hooks, network listing,
+discovery, pairing, protocol integration and automated tests are verified on the
+development PC. Physical mouse crossing, Mac permissions and behavior on a specific
+macOS build require hands-on testing with both computers; a successful build alone
+does not prove them.
 
 - One Windows host and one paired Mac per session; IPv4 local networking.
+- The Mac finds the PC with a UDP broadcast. Networks that block broadcasts need the
+  IP address typed in.
 - One selected display per computer for crossings; left/right layouts only.
-- No keyboard, rich-text/image/file clipboard, file dragging between computers,
-  Bluetooth transport, Internet relay, automatic discovery, or automatic startup.
+- No keyboard sharing, rich-text/image/file clipboard, file dragging between
+  computers, Bluetooth transport, internet relay or automatic startup.
 - A held-button drag stays on its current computer; release before crossing.
-- The Windows cursor is parked while controlling the Mac; hiding it is best
-  effort because individual Windows apps can reset their cursor shape.
+- The Windows cursor is parked while controlling the Mac; hiding it is best effort
+  because individual Windows apps can reset their cursor shape.
 - Login screens, UAC/secure desktops, games using raw/exclusive input, and protected
   macOS surfaces are not supported. Stop sharing before locking either computer.
 - Clipboard changes within the 650 ms polling interval can coalesce. If both
-  computers copy simultaneously, arrival order wins; recopy the desired text.
+  computers copy simultaneously, arrival order wins; copy the text again.
 - No independent security audit or latency benchmark has been performed.
 
 ## Run from source
@@ -151,9 +154,9 @@ python3 -m venv .venv
 
 Build the distributable archive with `python scripts/build.py` from that virtual
 environment. It appears under `dist/`. The GitHub workflow builds Windows x64 and
-macOS arm64 separately; pushing a version tag such as `v0.1.0` also publishes both
-archives as a GitHub release. Shipping a notarized Mac build requires an Apple Developer
-signing identity and notarization credentials, which are not stored in this repo.
+macOS arm64 separately; pushing a version tag such as `v0.2.0` also publishes both
+archives as a GitHub release. Shipping a notarized Mac build requires an Apple
+Developer signing identity and notarization credentials, which are not stored in this repo.
 
 ## Development
 
@@ -162,16 +165,22 @@ python -m unittest discover -s tests -v
 python -m clickaway --preview
 python -m clickaway --preview-mac
 python scripts/render_preview.py
+python scripts/make_icons.py
 ```
 
-The preview commands cannot capture the mouse or open a network listener. The
-render script draws the actual Qt widgets to `docs/images/` for visual review.
+The preview commands cannot capture the mouse or open a network listener. The render
+script draws the actual Qt widgets to `docs/images/`. The icon script regenerates
+`logo.ico` and `logo.icns` from `logo.svg` and needs Pillow.
 
 See [Architecture](docs/architecture.md), [Manual acceptance checks](docs/testing.md)
 and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ### API references
 
-The native adapters use [Windows low-level mouse hooks](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelmouseproc)
+The native adapters use [Windows low-level mouse hooks](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelmouseproc),
+[GetAdaptersAddresses](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses),
+[WlanQueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanqueryinterface)
 and [Apple Quartz mouse events](https://developer.apple.com/documentation/coregraphics/cgevent/init(mouseeventsource:mousetype:mousecursorposition:mousebutton:)).
-The interface uses Qt and the [Outfit typeface](https://github.com/google/fonts/tree/main/ofl/outfit).
+Pairing follows [SPAKE2 (RFC 9382)](https://www.rfc-editor.org/rfc/rfc9382) over the
+[RFC 3526](https://www.rfc-editor.org/rfc/rfc3526) 2048-bit group. The interface uses
+Qt and the [Outfit typeface](https://github.com/google/fonts/tree/main/ofl/outfit).

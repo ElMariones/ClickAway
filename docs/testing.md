@@ -4,19 +4,28 @@
 
 Run `python -m unittest discover -s tests -v` in the installed virtual environment.
 
-The suite covers actual TLS sockets with bidirectional traffic, wrong fingerprint
-and wrong secret rejection, reconnects, fragmented frames, Unicode clipboard limits,
-unresponsive peers, queue overflow, portal geometry, drag boundaries, Win32 adapter
-semantics, Quartz adapter semantics, clipboard opt-out/echo prevention, and stale
-connection callbacks after cancellation. Native adapter behavioral tests use mocks;
-they do not establish that an OS accepted injected input.
+The suite covers:
+
+- Real TLS sockets with bidirectional traffic, reconnects, fragmented frames, Unicode
+  clipboard limits, unresponsive peers and queue overflow.
+- Password pairing: the SPAKE2 group constants (re-derived from RFC 3526), matching
+  and mismatched passwords, a relay presenting a different certificate, invalid
+  group elements, password rules, and sharing stopping after repeated wrong passwords.
+- UDP discovery of a sharing host.
+- Portal geometry, drag boundaries, crossing past the desktop edge, Win32 and Quartz
+  adapter semantics, network naming, clipboard opt-out and echo prevention, and
+  stale connection callbacks after cancellation.
+
+Native adapter tests use mocks; they do not establish that an OS accepted injected input.
 
 ## Physical Windows/Mac acceptance checks
 
 These require both computers, an actual mouse, the installed apps and user-granted
 macOS permissions. They are **not claimed complete** by CI.
 
-1. Pair over the same Wi-Fi using a newly generated code. Confirm both statuses.
+1. Start sharing on Windows with a password. Confirm the network list shows the
+   Wi-Fi name. On the Mac, type the password and connect without an IP address.
+   Confirm both statuses show Connected.
 2. With the Mac on the left, cross near the top, middle and bottom. Confirm the Mac
    pointer lands at the same relative height and clicks the expected item.
 3. Return across the Mac's right edge. Repeat with the Mac configured on the right.
@@ -28,15 +37,18 @@ macOS permissions. They are **not claimed complete** by CI.
 7. Copy Unicode and multiline text in each direction. Confirm disabling sync on
    either side blocks it. Confirm images, files and oversized text remain local.
 8. Disconnect Wi-Fi while the mouse is remote and while a button is held. Confirm
-   recovery in roughly three seconds. Reconnect explicitly and try again.
-9. Stop sharing; confirm the old code fails. Start again and use a new code.
-10. Remove Accessibility permission; confirm the session ends and reconnecting
+   recovery in roughly three seconds. Connect again from the Mac.
+9. Type a wrong password on the Mac and confirm it says so. Stop sharing and
+   confirm the Mac can no longer connect. Start again with a different password.
+10. Block UDP discovery (for example with a network that isolates clients) and
+    confirm the Mac offers the IP address field and connects with it.
+11. Remove Accessibility permission; confirm the session ends and reconnecting
     explains the required permission. Re-enable it and verify mouse injection.
-11. Test display scaling, monitor selection, resolution changes and a sleep/wake
+12. Test display scaling, monitor selection, resolution changes and a sleep/wake
     cycle. Changes should end sharing and require reconnecting.
-12. Verify both zipped distributions on a clean computer without Python installed.
+13. Verify both zipped distributions on a clean computer without Python installed.
     Confirm the Mac build is arm64 and record OS/build versions with any issues.
 
 When reporting an issue, include OS versions, app version, chosen side, display
 sizes/scaling, connection status and exact reproduction steps. Do not include
-the connection code or private clipboard contents.
+your password or private clipboard contents.

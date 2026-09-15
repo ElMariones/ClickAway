@@ -1,4 +1,6 @@
-"""ClickAway's original blue-and-butter desktop visual system."""
+"""ClickAway's blue-and-butter desktop visual system."""
+
+from pathlib import Path
 
 from PySide6.QtCore import (
     Property,
@@ -10,6 +12,7 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QPushButton, QWidget
 
 BLUE = "#2856e8"
@@ -96,32 +99,19 @@ class Button(QPushButton):
 
 
 class Logo(QWidget):
-    def __init__(self, parent=None):
+    """Draws assets/logo.svg, the same artwork used for the app icons."""
+
+    def __init__(self, parent=None, size=44):
         super().__init__(parent)
-        self.setFixedSize(48, 48)
+        self.renderer = QSvgRenderer(
+            str(Path(__file__).parent / "assets" / "logo.svg"), self
+        )
+        self.setFixedSize(size, size)
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(BLUE))
-        p.drawRoundedRect(QRectF(0, 0, 48, 48), 15, 15)
-        p.setBrush(QColor(BUTTER))
-        p.drawRoundedRect(QRectF(25, 9, 14, 20), 5, 5)
-        p.setBrush(QColor("white"))
-        p.drawPolygon(
-            QPolygonF(
-                [
-                    QPointF(11, 12),
-                    QPointF(13, 35),
-                    QPointF(19, 28),
-                    QPointF(25, 37),
-                    QPointF(30, 33),
-                    QPointF(24, 25),
-                    QPointF(33, 24),
-                ]
-            )
-        )
+        self.renderer.render(p, QRectF(self.rect()))
 
 
 class Desk(QWidget):
@@ -130,7 +120,7 @@ class Desk(QWidget):
         self._position = 0.0
         self.connected = False
         self.phase = 0.0
-        self.setMinimumHeight(156)
+        self.setMinimumHeight(190)
         self.setAccessibleName("Desk layout: Mac on the left of Windows")
         self.animation = QPropertyAnimation(self, b"position", self)
         self.animation.setDuration(420)
@@ -163,7 +153,10 @@ class Desk(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.scale(self.width() / 480, self.height() / 198)
+        # Scale uniformly and center, so the computers keep their proportions.
+        scale = min(self.width() / 480, self.height() / 198)
+        p.translate((self.width() - 480 * scale) / 2, (self.height() - 198 * scale) / 2)
+        p.scale(scale, scale)
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor("#fff1b9"))
         p.drawEllipse(QRectF(60, 17, 136, 136))
@@ -240,7 +233,7 @@ class Desk(QWidget):
         p.drawText(
             QRectF(cx - 85, 170, 170, 22),
             Qt.AlignmentFlag.AlignCenter,
-            "MacBook Pro" if mac else "Windows PC",
+            "Mac" if mac else "Windows PC",
         )
 
 
@@ -249,10 +242,9 @@ QMainWindow, QWidget#page { background: #fffbf1; }
 QWidget { color: #17326d; font-family: 'Outfit'; font-size: 14px; }
 QLabel { background: transparent; }
 QLabel#muted { color: #687590; }
-QLabel#eyebrow { color: #687590; font-size: 11px; font-weight: 600; letter-spacing: 1.3px; }
-QLabel#title { color: #2856e8; font-size: 35px; font-weight: 650; }
-QLabel#brand { font-size: 30px; font-weight: 700; color: #17326d; }
-QLabel#cardTitle { font-size: 22px; font-weight: 600; }
+QLabel#field { color: #687590; font-size: 12px; font-weight: 600; }
+QLabel#brand { font-size: 28px; font-weight: 700; color: #17326d; }
+QLabel#cardTitle { font-size: 20px; font-weight: 600; }
 QLabel#badge { background: #e9efff; color: #2856e8; border-radius: 15px; padding: 8px 14px; font-weight: 600; font-size: 11px; }
 QFrame#deskCard { background: #edf3ff; border: 1px solid #d8e3fb; border-radius: 23px; }
 QFrame#settingsCard { background: #fff3cc; border: 1px solid #f4e4ae; border-radius: 23px; }

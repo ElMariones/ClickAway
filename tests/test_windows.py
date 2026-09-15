@@ -96,6 +96,58 @@ class WindowsTests(unittest.TestCase):
         self.assertFalse(self.controller._handle(0x200, self.data(-3)))
         self.assertFalse(self.controller.remote)
 
+    def test_networks_show_wifi_names_and_hide_unusable_adapters(self):
+        adapters = [
+            {
+                "guid": "{A}",
+                "name": "vEthernet (WSL)",
+                "type": 6,
+                "up": 1,
+                "gateway": False,
+                "ips": ["172.21.48.1"],
+            },
+            {
+                "guid": "{B}",
+                "name": "Ethernet",
+                "type": 6,
+                "up": 2,
+                "gateway": False,
+                "ips": ["169.254.1.1"],
+            },
+            {
+                "guid": "{c}",
+                "name": "Wi-Fi 2",
+                "type": 71,
+                "up": 1,
+                "gateway": True,
+                "ips": ["192.168.1.153"],
+            },
+            {
+                "guid": "{D}",
+                "name": "Loopback",
+                "type": 24,
+                "up": 1,
+                "gateway": False,
+                "ips": ["127.0.0.1"],
+            },
+            {
+                "guid": "{E}",
+                "name": "Wi-Fi 3",
+                "type": 71,
+                "up": 1,
+                "gateway": True,
+                "ips": ["10.0.0.7"],
+            },
+        ]
+        self.assertEqual(
+            self.windows.describe_networks(adapters, {"{C}": "Home"}),
+            [
+                ("Wi-Fi: Home · 192.168.1.153", "192.168.1.153"),
+                ("Wi-Fi 3 · 10.0.0.7", "10.0.0.7"),
+                ("vEthernet (WSL) · 172.21.48.1", "172.21.48.1"),
+            ],
+        )
+
     def test_held_local_button_blocks_crossing(self):
         self.api.GetAsyncKeyState.return_value = -32768
         self.controller._handle(0x200, self.data(10))

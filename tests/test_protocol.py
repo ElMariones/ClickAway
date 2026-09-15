@@ -3,15 +3,7 @@ import struct
 import threading
 import unittest
 
-from clickaway.protocol import (
-    MAX_FRAME,
-    MAX_TEXT,
-    encode,
-    pairing_code,
-    parse_pairing,
-    receive,
-    validate,
-)
+from clickaway.protocol import MAX_FRAME, MAX_TEXT, VERSION, encode, receive, validate
 
 
 class ProtocolTests(unittest.TestCase):
@@ -32,24 +24,23 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(receive(second), msg)
         thread.join()
 
-    def test_connection_code_roundtrip_and_whitespace(self):
-        code = pairing_code("192.168.1.10", "a" * 64, "b" * 64)
-        parsed = parse_pairing("\n" + code[:50] + "\n" + code[50:] + " ")
-        self.assertEqual(parsed["host"], "192.168.1.10")
-        self.assertEqual(parsed["fingerprint"], "a" * 64)
-
-    def test_invalid_code(self):
-        for code in (
-            "",
-            "CA1-",
-            "CA1-!!!!",
-            "CA2-nope",
-            "CA1-" + "A" * 3000,
-            pairing_code("not-an-ip", "a" * 64, "b" * 64),
-            pairing_code("127.0.0.1", "a", "b" * 64),
+    def test_pairing_messages_are_strict(self):
+        key, proof = "ab" * 256, "cd" * 32
+        validate({"type": "hello", "version": VERSION, "key": key})
+        validate({"type": "verify", "version": VERSION, "key": key, "proof": proof})
+        validate({"type": "confirm", "proof": proof, "width": 1512, "height": 982})
+        validate({"type": "ready", "version": VERSION})
+        for message in (
+            {"type": "hello", "version": 1, "token": "b" * 64},
+            {"type": "hello", "version": VERSION, "key": key[:-2]},
+            {"type": "hello", "version": VERSION, "key": key.upper()},
+            {"type": "hello", "version": VERSION, "key": key + "\n"},
+            {"type": "verify", "version": VERSION, "key": key, "proof": "00"},
+            {"type": "confirm", "proof": proof, "width": 50, "height": 982},
+            {"type": "confirm", "width": 1512, "height": 982},
         ):
-            with self.subTest(code=code[:30]), self.assertRaises(ValueError):
-                parse_pairing(code)
+            with self.subTest(message=str(message)[:60]), self.assertRaises(ValueError):
+                validate(message)
 
     def test_frame_size_rejected_before_body_read(self):
         for length in (0, MAX_FRAME + 1, 0xFFFFFFFF):

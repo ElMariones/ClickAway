@@ -3,6 +3,7 @@
 import ctypes as C
 from ctypes import wintypes as W
 import queue
+import socket
 import threading
 import time
 
@@ -88,6 +89,231 @@ def screens():
     return result or [
         Screen(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))
     ]
+
+
+class SocketAddress(C.Structure):
+    _fields_ = [("sockaddr", C.c_void_p), ("length", C.c_int)]
+
+
+class UnicastAddress(C.Structure):
+    pass
+
+
+UnicastAddress._fields_ = [  # Leading fields of IP_ADAPTER_UNICAST_ADDRESS_LH.
+    ("length", C.c_ulong),
+    ("flags", W.DWORD),
+    ("next", C.POINTER(UnicastAddress)),
+    ("address", SocketAddress),
+]
+
+
+class AdapterAddresses(C.Structure):
+    pass
+
+
+AdapterAddresses._fields_ = [  # Leading fields of IP_ADAPTER_ADDRESSES_LH.
+    ("length", C.c_ulong),
+    ("index", C.c_ulong),
+    ("next", C.POINTER(AdapterAddresses)),
+    ("name", C.c_char_p),
+    ("unicast", C.POINTER(UnicastAddress)),
+    ("anycast", C.c_void_p),
+    ("multicast", C.c_void_p),
+    ("dns", C.c_void_p),
+    ("dns_suffix", C.c_wchar_p),
+    ("description", C.c_wchar_p),
+    ("friendly_name", C.c_wchar_p),
+    ("physical", C.c_ubyte * 8),
+    ("physical_length", C.c_ulong),
+    ("flags", C.c_ulong),
+    ("mtu", C.c_ulong),
+    ("if_type", C.c_ulong),
+    ("oper_status", C.c_int),
+    ("ipv6_index", C.c_ulong),
+    ("zones", C.c_ulong * 16),
+    ("prefix", C.c_void_p),
+    ("transmit_speed", C.c_uint64),
+    ("receive_speed", C.c_uint64),
+    ("wins", C.c_void_p),
+    ("gateway", C.c_void_p),
+]
+
+
+class Guid(C.Structure):
+    _fields_ = [
+        ("data1", C.c_ulong),
+        ("data2", C.c_ushort),
+        ("data3", C.c_ushort),
+        ("data4", C.c_ubyte * 8),
+    ]
+
+    def __str__(self):
+        tail = bytes(self.data4).hex().upper()
+        return f"{{{self.data1:08X}-{self.data2:04X}-{self.data3:04X}-{tail[:4]}-{tail[4:]}}}"
+
+
+class WlanInterface(C.Structure):
+    _fields_ = [("guid", Guid), ("description", C.c_wchar * 256), ("state", C.c_int)]
+
+
+class WlanInterfaceList(C.Structure):
+    _fields_ = [
+        ("count", W.DWORD),
+        ("index", W.DWORD),
+        ("items", WlanInterface * 1),
+    ]
+
+
+class Dot11Ssid(C.Structure):
+    _fields_ = [("length", C.c_ulong), ("name", C.c_ubyte * 32)]
+
+
+class WlanConnection(C.Structure):  # Leading fields of WLAN_CONNECTION_ATTRIBUTES.
+    _fields_ = [
+        ("state", C.c_int),
+        ("mode", C.c_int),
+        ("profile", C.c_wchar * 256),
+        ("ssid", Dot11Ssid),
+    ]
+
+
+def networks():
+    """Connected IPv4 networks as (label, address), Wi-Fi shown by network name."""
+    return describe_networks(_adapters(), _wifi_names())
+
+
+def describe_networks(adapters, wifi):
+    ranked = []
+    for adapter in adapters:
+        if adapter["up"] != 1 or adapter["type"] in (24, 131):  # Loopback, tunnel.
+            continue
+        ssid = wifi.get(adapter["guid"].upper())
+        name = f"Wi-Fi: {ssid}" if ssid else adapter["name"]
+        for address in adapter["ips"]:
+            if address.startswith(("127.", "169.254.")):
+                continue
+            # Networks with a router first (virtual switches have none), then Wi-Fi.
+            rank = (
+                not adapter["gateway"],
+                adapter["type"] != 71,
+                not ssid,
+                name.lower(),
+            )
+            ranked.append((rank, f"{name} · {address}", address))
+    return [(label, address) for _, label, address in sorted(ranked)]
+
+
+def _adapters():
+    api = C.WinDLL("iphlpapi")
+    api.GetAdaptersAddresses.argtypes = [
+        C.c_ulong,
+        C.c_ulong,
+        C.c_void_p,
+        C.c_void_p,
+        C.POINTER(C.c_ulong),
+    ]
+    api.GetAdaptersAddresses.restype = C.c_ulong
+    size = C.c_ulong(16384)
+    for _ in range(4):
+        buffer = C.create_string_buffer(size.value)
+        # AF_INET with GAA_FLAG_INCLUDE_GATEWAYS. ERROR_BUFFER_OVERFLOW updates size.
+        result = api.GetAdaptersAddresses(2, 0x80, None, buffer, C.byref(size))
+        if result == 0:
+            break
+        if result != 111:
+            raise OSError(f"Could not list network adapters (error {result})")
+    else:
+        raise OSError("Could not list network adapters")
+    adapters = []
+    item = C.cast(buffer, C.POINTER(AdapterAddresses))
+    while item:
+        adapter = item.contents
+        addresses = []
+        unicast = adapter.unicast
+        while unicast:
+            raw = C.string_at(unicast.contents.address.sockaddr, 8)
+            addresses.append(socket.inet_ntoa(raw[4:8]))
+            unicast = unicast.contents.next
+        adapters.append(
+            {
+                "guid": adapter.name.decode("ascii", "replace").upper(),
+                "name": adapter.friendly_name or "Network",
+                "type": adapter.if_type,
+                "up": adapter.oper_status,
+                "gateway": bool(adapter.gateway),
+                "ips": addresses,
+            }
+        )
+        item = adapter.next
+    return adapters
+
+
+def _wifi_names():
+    """SSID of each connected Wi-Fi adapter by GUID; empty if Windows withholds it."""
+    try:
+        api = C.WinDLL("wlanapi")
+    except OSError:
+        return {}
+    api.WlanOpenHandle.argtypes = [
+        W.DWORD,
+        C.c_void_p,
+        C.POINTER(W.DWORD),
+        C.POINTER(W.HANDLE),
+    ]
+    api.WlanEnumInterfaces.argtypes = [
+        W.HANDLE,
+        C.c_void_p,
+        C.POINTER(C.POINTER(WlanInterfaceList)),
+    ]
+    api.WlanQueryInterface.argtypes = [
+        W.HANDLE,
+        C.POINTER(Guid),
+        C.c_int,
+        C.c_void_p,
+        C.POINTER(W.DWORD),
+        C.POINTER(C.c_void_p),
+        C.c_void_p,
+    ]
+    api.WlanFreeMemory.argtypes = [C.c_void_p]
+    api.WlanCloseHandle.argtypes = [W.HANDLE, C.c_void_p]
+    handle = W.HANDLE()
+    if api.WlanOpenHandle(2, None, C.byref(W.DWORD()), C.byref(handle)):
+        return {}  # No WLAN service, e.g. a desktop without Wi-Fi.
+    names = {}
+    interfaces = C.POINTER(WlanInterfaceList)()
+    try:
+        if api.WlanEnumInterfaces(handle, None, C.byref(interfaces)):
+            return {}
+        count = interfaces.contents.count
+        items = C.cast(
+            C.addressof(interfaces.contents.items), C.POINTER(WlanInterface * count)
+        ).contents
+        for interface in items:
+            if interface.state != 1:  # wlan_interface_state_connected
+                continue
+            data, size = C.c_void_p(), W.DWORD()
+            # wlan_intf_opcode_current_connection; denied without location access.
+            if api.WlanQueryInterface(
+                handle,
+                C.byref(interface.guid),
+                7,
+                None,
+                C.byref(size),
+                C.byref(data),
+                None,
+            ):
+                continue
+            ssid = C.cast(data, C.POINTER(WlanConnection)).contents.ssid
+            length = min(ssid.length, 32)
+            names[str(interface.guid)] = bytes(ssid.name[:length]).decode(
+                "utf-8", "replace"
+            )
+            api.WlanFreeMemory(data)
+    finally:
+        if interfaces:
+            api.WlanFreeMemory(C.cast(interfaces, C.c_void_p))
+        api.WlanCloseHandle(handle, None)
+    return names
 
 
 class MouseController:
