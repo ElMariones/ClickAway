@@ -12,11 +12,14 @@ import unittest
 from clickaway.audio import (
     DEFAULT_LATENCY,
     LATENCIES,
+    Chunker,
     JitterBuffer,
     byte_count,
+    planes_to_int16,
     to_int16,
 )
 from clickaway.protocol import (
+    DIRECTIONS,
     MAX_LATENCY,
     MIN_LATENCY,
     MAX_SOUND,
@@ -45,6 +48,16 @@ class ConversionTests(unittest.TestCase):
         converted.frombytes(to_int16(packet, 6, True))
         self.assertEqual(list(converted), [3277, 6553, 22937, 26214])
 
+    def test_channel_planes_are_interleaved_the_way_macos_sends_them(self):
+        packet = floats(0.5, -0.5, 1.0, 0.0)  # Left plane, then right plane.
+        converted = array.array("h")
+        converted.frombytes(planes_to_int16(packet, 2, 2))
+        self.assertEqual(list(converted), [16384, 32767, -16384, 0])
+
+    def test_a_short_plane_packet_is_dropped_rather_than_misread(self):
+        self.assertEqual(planes_to_int16(floats(0.5, -0.5), 2, 4), b"")
+        self.assertEqual(planes_to_int16(b"", 2, 0), b"")
+
     def test_sixteen_bit_packets_pass_through_untouched(self):
         samples = array.array("h", [0, -1, 32767, -32768]).tobytes()
         self.assertEqual(to_int16(samples, 2, False), samples)
@@ -55,6 +68,19 @@ class ConversionTests(unittest.TestCase):
     def test_byte_count_is_whole_audio_frames(self):
         self.assertEqual(byte_count(48000, 2, 120), 48000 * 2 * 2 * 120 // 1000)
         self.assertEqual(byte_count(48000, 2, 0), 4)
+
+
+class ChunkerTests(unittest.TestCase):
+    def test_sound_is_handed_on_in_equal_pieces_with_the_rest_kept(self):
+        pieces = []
+        chunker = Chunker(4, pieces.append)
+        chunker.add(b"abcde")
+        chunker.add(b"fgh")
+        self.assertEqual(pieces, [b"abcd", b"efgh"])
+        self.assertEqual(bytes(chunker.pending), b"")
+        chunker.add(b"ij")
+        self.assertEqual(pieces, [b"abcd", b"efgh"])
+        self.assertEqual(bytes(chunker.pending), b"ij")
 
 
 class JitterBufferTests(unittest.TestCase):
@@ -115,7 +141,9 @@ class SoundFrameTests(unittest.TestCase):
     def test_sound_settings_are_checked_before_they_reach_the_speakers(self):
         good = {
             "type": "sound",
-            "playing": True,
+            "direction": "to-pc",
+            "sending": True,
+            "listening": False,
             "volume": 0.8,
             "rate": 48000,
             "channels": 2,
@@ -123,7 +151,10 @@ class SoundFrameTests(unittest.TestCase):
         }
         validate(good)
         for change in (
-            {"playing": "yes"},
+            {"direction": "sideways"},
+            {"direction": None},
+            {"sending": "yes"},
+            {"listening": 1},
             {"volume": 1.5},
             {"volume": True},
             {"rate": 4000},
@@ -135,6 +166,22 @@ class SoundFrameTests(unittest.TestCase):
             message = dict(good, **change)
             with self.subTest(change=str(change)), self.assertRaises(ValueError):
                 validate(message)
+
+    def test_both_sound_directions_are_understood(self):
+        for direction in DIRECTIONS:
+            with self.subTest(direction=direction):
+                validate(
+                    {
+                        "type": "sound",
+                        "direction": direction,
+                        "sending": False,
+                        "listening": True,
+                        "volume": 0,
+                        "rate": 44100,
+                        "channels": 1,
+                        "latency": MIN_LATENCY,
+                    }
+                )
 
     def test_every_offered_delay_is_one_the_other_computer_accepts(self):
         for name, value in LATENCIES:

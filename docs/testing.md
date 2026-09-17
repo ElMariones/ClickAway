@@ -12,11 +12,16 @@ The suite covers:
   and mismatched passwords, a relay presenting a different certificate, invalid
   group elements, password rules, and sharing stopping after repeated wrong passwords.
 - UDP discovery of a sharing host.
-- Sound: float and surround packets converted to 16-bit stereo without wrapping
-  around at full scale, the jitter buffer filling, refilling and dropping what fell
-  behind, binary sound frames over a fragmented socket and over a real paired
-  connection, rejected sound settings and frame sizes, mouse messages overtaking
-  queued sound, and a Mac refusing sound telling Windows to stop sending.
+- Sound: float, surround and channel-plane packets converted to 16-bit stereo
+  without wrapping around at full scale, the jitter buffer filling, refilling and
+  dropping what fell behind, binary sound frames over a fragmented socket and over a
+  real paired connection, rejected sound settings and frame sizes, mouse messages
+  overtaking queued sound, and the Mac following the direction Windows chose or
+  refusing it.
+- The Mac's ScreenCaptureKit capture is tested against stand-ins for the macOS
+  frameworks: reading each sample-buffer format it can be handed, announcing the
+  format once, chunking, and reporting a failure once. Only the arithmetic is
+  covered this way; that macOS actually delivers sound is check 13 below.
 - Portal geometry, drag boundaries, crossing past the desktop edge, Win32 and Quartz
   adapter semantics, network naming, clipboard opt-out and echo prevention, and
   stale connection callbacks after cancellation.
@@ -51,21 +56,27 @@ macOS permissions. They are **not claimed complete** by CI.
     explains the required permission. Re-enable it and verify mouse injection.
 12. Test display scaling, monitor selection, resolution changes and a sleep/wake
     cycle. Changes should end sharing and require reconnecting.
-13. Play a game or video on Windows with **Send this PC's sound to the Mac** on.
+13. Set **Which way sound travels** to **This PC → Mac** and play a game on Windows.
     Confirm the Mac plays it mixed with a video playing on the Mac, that the volume
     slider and each delay choice work, and that turning Windows' own volume to zero
     silences the PC without quieting the Mac. Switch the PC's output device while
-    connected and confirm sound returns on its own. Turn the toggle off on the Mac
-    and confirm Windows stops sending. Confirm the mouse stays responsive while
-    sound is streaming, including on Wi-Fi.
-14. Verify both installers on a clean computer without Python installed. On Windows,
+    connected and confirm sound returns on its own. Clear **Allow sound sharing on
+    this Mac** and confirm Windows stops sending. Confirm the mouse stays responsive
+    while sound is streaming, including on Wi-Fi.
+14. Set the direction to **Mac → this PC**. Confirm the Mac asks for Screen & System
+    Audio Recording, that granting it and reopening ClickAway makes the Mac send, and
+    that a video on the Mac is heard on Windows alongside a game on Windows. Confirm
+    ClickAway's own playback is not captured back, so nothing echoes. Confirm the
+    permission button disappears once granted, and that revoking the permission gives
+    a message rather than silence.
+15. Verify both installers on a clean computer without Python installed. On Windows,
     `ClickAway-Setup-x64.exe` should install without an administrator prompt, leave a
     working Start Menu shortcut, and remove itself from Installed apps. On the Mac,
     the disk image should open a window showing ClickAway beside the Applications
     folder, and dragging it across should install a version that launches from
     Applications. Confirm the Mac build is arm64 and record OS/build versions with
     any issues.
-15. Confirm Accessibility permission survives quitting and reopening the app once it
+16. Confirm Accessibility permission survives quitting and reopening the app once it
     has been installed into `/Applications` from the disk image.
 
 When reporting an issue, include OS versions, app version, chosen side, display

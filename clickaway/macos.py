@@ -17,6 +17,17 @@ def accessibility(prompt=False):
     return bool(AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: prompt}))
 
 
+def screen_recording(prompt=False):
+    """Whether macOS lets ClickAway capture the screen, and with it the sound.
+
+    Granting it takes effect only after ClickAway is reopened, which is macOS's
+    rule for this permission rather than something ClickAway can work around.
+    """
+    if prompt and not Q.CGPreflightScreenCaptureAccess():
+        return bool(Q.CGRequestScreenCaptureAccess())
+    return bool(Q.CGPreflightScreenCaptureAccess())
+
+
 def screens():
     # CG coordinates are logical display points, including on Retina screens.
     _, ids, _ = Q.CGGetActiveDisplayList(32, None, None)

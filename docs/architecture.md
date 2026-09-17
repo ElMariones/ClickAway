@@ -32,7 +32,18 @@ the engine's own float format is taken and converted in `clickaway/audio.py`. Th
 thread reopens the device by itself when the default output changes, and tells the
 Mac the new format. Packets are grouped into 20 ms chunks and handed to the peer.
 
-The Mac plays them with `QAudioSink` in push mode. A jitter buffer holds the chosen
+The Mac captures its own sound with ScreenCaptureKit (`clickaway/screensound.py`),
+because macOS has no loopback recording: an app cannot ask for a copy of what the
+speakers are playing. ScreenCaptureKit can, since it exists to record the screen, so
+ClickAway asks for a two-pixel picture at one frame per second, throws every frame
+away and keeps the sound. That is why sending Mac sound needs Screen & System Audio
+Recording permission, which macOS applies only to a fresh launch of the app. The
+stream is told to leave ClickAway's own playback out, so sound cannot loop back.
+Sample buffers arrive on a dispatch queue; their format is read from the buffer
+rather than assumed, and channel planes are interleaved into the same 16-bit stereo
+the Windows side sends.
+
+Either computer plays what it receives with `QAudioSink` in push mode. A jitter buffer holds the chosen
 delay before playback starts and hands bytes to the sink from the Qt thread; the
 network thread only appends to it. Sound that arrives later than the buffer's limit
 allows is dropped rather than played late, and an emptied buffer refills before it
@@ -91,7 +102,7 @@ Certificates are loaded from a temporary directory and the key files are removed
 immediately after loading into the TLS context. The password is held in memory only
 while sharing and is never stored or logged.
 
-## Wire protocol, version 3
+## Wire protocol, version 4
 
 TLS carries ordered frames: 4-byte big-endian length followed by UTF-8 JSON. Frames
 are limited to 400 KiB (allowing escaped control characters in a 64 KiB clipboard).
@@ -113,15 +124,20 @@ event handling.
 | `scroll` | Windows → Mac | `dx`, `dy`, Windows wheel units |
 | `leave` | Windows → Mac | — |
 | `clipboard` | Both | `text`, UTF-8 byte limit 65,536 |
-| `sound` | Windows → Mac | `playing`, `volume` 0–1, `rate`, `channels`, `latency` ms |
-| `sound` | Mac → Windows | `playing`, telling Windows whether to send sound at all |
-| sound frame | Windows → Mac | raw samples, length word tagged with the top bit |
+| `sound` | Both | `direction`, `volume` 0–1, `latency` ms, `sending`, `listening`, `rate`, `channels` |
+| sound frame | Either way | raw samples, length word tagged with the top bit |
 | `ping` | Both | — |
 
 Discovery uses single UDP datagrams of JSON outside TLS: the probe
-`{"clickaway": "discover", "version": 3}` and the reply
-`{"clickaway": "here", "version": 3, "port": 49624, "name": "<computer name>"}`.
+`{"clickaway": "discover", "version": 4}` and the reply
+`{"clickaway": "here", "version": 4, "port": 49624, "name": "<computer name>"}`.
 A reply only says that a ClickAway host is sharing; pairing still requires the password.
+
+One `sound` message carries a computer's whole sound state, so neither side has to
+track a sequence of requests: Windows owns the direction, volume and delay, each
+computer reports whether it is `sending` and whether it would be `listening`, and
+both recompute what to do whenever either changes. A computer sends it only when its
+own state moves, so the exchange settles instead of echoing.
 
 Outbound queues are bounded at 1,024 messages. Congestion disconnects the peer
 rather than accumulating an unbounded input delay. Sound has its own queue of 25
@@ -134,8 +150,8 @@ simple, auditable encrypted transport over a custom reliable UDP protocol.
 
 ## Persisted data
 
-Only side, speed, clipboard preference, sound preference, volume and delay are saved
-in an atomic JSON replacement:
+Only side, speed, clipboard preference, sound direction and permission, volume and
+delay are saved in an atomic JSON replacement:
 
 - Windows: `%LOCALAPPDATA%/ClickAway/settings.json`
 - Mac: `~/Library/Application Support/ClickAway/settings.json`

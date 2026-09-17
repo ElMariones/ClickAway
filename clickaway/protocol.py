@@ -13,13 +13,14 @@ import time
 from .pake import KEY_BYTES
 
 PORT = 49624
-VERSION = 3
+VERSION = 4
 MAX_TEXT = 64 * 1024
 MAX_FRAME = 400 * 1024  # JSON may expand a Unicode character into escape sequences.
 SOUND_FRAME = 0x80000000  # This bit of the length word marks raw samples, not JSON.
 MAX_SOUND = 32 * 1024
 SOUND_QUEUE = 25  # Half a second of sound; older chunks are dropped, never queued.
-MIN_LATENCY, MAX_LATENCY = 40, 500  # How long the Mac may hold sound before playing.
+MIN_LATENCY, MAX_LATENCY = 40, 500  # How long the player may hold sound, in ms.
+DIRECTIONS = ("off", "to-mac", "to-pc")  # Sound travels one way at a time.
 
 
 def encode(message):
@@ -116,8 +117,13 @@ def validate(m):
         ):
             raise ValueError("Clipboard text exceeds 64 KiB")
     elif kind == "sound":
+        # One message carries everything a computer wants the other one to know:
+        # the agreed direction and, for the sender, whether it is sending sound
+        # in this format and whether it would play the other computer's sound.
         if (
-            type(m.get("playing")) is not bool
+            m.get("direction") not in DIRECTIONS
+            or type(m.get("sending")) is not bool
+            or type(m.get("listening")) is not bool
             or type(m.get("volume")) not in (int, float)
             or not 0 <= m["volume"] <= 1
             or type(m.get("rate")) is not int

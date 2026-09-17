@@ -65,43 +65,48 @@ class AppTests(unittest.TestCase):
             self.window._message({"type": "clipboard", "text": "Should be ignored"})
             clipboard.return_value.setText.assert_called_once()
 
-    def test_a_mac_that_will_not_play_sound_asks_windows_to_stop_sending(self):
-        mac = App(preview_mac=True)
-        self.addCleanup(mac.close)
-        mac.peer = self.peer
-        mac.sound_toggle.setChecked(False)
-        self.peer.send.reset_mock()
-        mac._play_sound(
-            {
-                "type": "sound",
-                "playing": True,
-                "volume": 0.5,
-                "rate": 48000,
-                "channels": 2,
-                "latency": 120,
-            }
-        )
-        self.assertIsNone(mac.player)
-        self.peer.send.assert_called_once()
-        self.assertFalse(self.peer.send.call_args[0][0]["playing"])
+    def mac(self, direction="to-mac", **peer_state):
+        """A Mac app that has just heard from Windows, with a stub peer attached."""
+        window = App(preview_mac=True)
+        self.addCleanup(window.close)
+        window.peer = self.peer
+        state = {
+            "type": "sound",
+            "direction": direction,
+            "sending": False,
+            "listening": True,
+            "volume": 0.25,
+            "rate": 48000,
+            "channels": 2,
+            "latency": 250,
+        }
+        state.update(peer_state)
+        window._message(state)
+        return window
 
-    def test_the_mac_follows_the_volume_and_delay_windows_chose(self):
-        mac = App(preview_mac=True)
-        self.addCleanup(mac.close)
-        mac.peer = self.peer
-        mac._play_sound(
-            {
-                "type": "sound",
-                "playing": False,
-                "volume": 0.25,
-                "rate": 48000,
-                "channels": 2,
-                "latency": 250,
-            }
-        )
+    def test_the_mac_follows_the_direction_volume_and_delay_windows_chose(self):
+        mac = self.mac()
+        self.assertEqual(mac.direction, "to-mac")
         self.assertEqual(mac.volume_slider.value(), 25)
         self.assertEqual(mac.volume_label.text(), "25%")
         self.assertEqual(mac.latency_picker.currentData(), 250)
+
+    def test_a_mac_that_refuses_sound_tells_windows_it_is_not_listening(self):
+        mac = self.mac()
+        self.peer.send.reset_mock()
+        mac.sound_toggle.setChecked(False)
+        self.assertIsNone(mac.player)
+        self.peer.send.assert_called()
+        self.assertFalse(self.peer.send.call_args[0][0]["listening"])
+        self.assertIn("off on this Mac", mac.sound_status.text())
+
+    def test_the_mac_reports_whether_it_would_play_or_send(self):
+        listening = self.mac("to-mac")._sound_state()
+        self.assertTrue(listening["listening"])
+        self.assertFalse(listening["sending"])
+        sending = self.mac("to-pc")._sound_state()
+        self.assertFalse(sending["listening"])
+        self.assertEqual(sending["direction"], "to-pc")
 
     def test_late_connect_after_cancel_is_closed(self):
         late_peer = Mock()

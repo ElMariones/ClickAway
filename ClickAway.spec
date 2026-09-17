@@ -12,7 +12,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[("clickaway/assets", "clickaway/assets"), ("THIRD_PARTY_NOTICES.md", "."), ("LICENSE", ".")] + metadata,
-    hiddenimports=["Quartz", "AppKit", "ApplicationServices"] if is_mac else [],
+    hiddenimports=["Quartz", "AppKit", "ApplicationServices", "ScreenCaptureKit", "CoreMedia", "libdispatch", "dispatch"] if is_mac else [],
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtQml", "PySide6.QtQuick"],
     noarchive=False,
 )
@@ -30,12 +30,13 @@ if is_mac:
         coll, name="ClickAway.app", icon="clickaway/assets/logo.icns",
         bundle_identifier="io.github.elmariones.clickaway",
         info_plist={
-            "CFBundleShortVersionString": "0.4.0",
-            "CFBundleVersion": "5",
+            "CFBundleShortVersionString": "0.5.0",
+            "CFBundleVersion": "6",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",
             "NSLocalNetworkUsageDescription": "ClickAway finds your Windows PC on the local network and connects to it to use its mouse and share copied text.",
             "NSAccessibilityUsageDescription": "ClickAway uses Accessibility to move and click the mouse on your Mac when you cross from Windows.",
+            "NSAudioCaptureUsageDescription": "ClickAway captures the sound this Mac is playing so you can hear it on your Windows PC.",
             "LSMinimumSystemVersion": "14.0",
         },
     )

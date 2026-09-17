@@ -30,20 +30,30 @@ from .audio import DEFAULT_LATENCY, LATENCIES
 from .connection import Host, connect, local_addresses
 from .geometry import Screen
 from .pake import MAX_PASSWORD, MIN_PASSWORD, PairingError, normalize_password
-from .protocol import MAX_TEXT, PORT
+from .protocol import DIRECTIONS, MAX_TEXT, PORT
 from .widgets import Button, Desk, Logo, STYLES, font
 
 ASSETS = Path(__file__).parent / "assets"
 CLIPBOARD_HINT = "Plain text up to 64 KB."
-SOUND_HINT = (
-    "Windows sound is sent to the Mac and plays alongside whatever the Mac is "
-    "playing. Turn the Windows volume all the way down: the Mac still gets the "
-    "sound at full strength."
+DIRECTION_NAMES = (
+    ("Off · sound stays on each computer", "off"),
+    ("This PC → Mac · hear Windows on the Mac", "to-mac"),
+    ("Mac → this PC · hear the Mac on Windows", "to-pc"),
 )
-MAC_SOUND_HINT = (
-    "Windows sound plays through this Mac, mixed with the Mac's own sound. "
-    "Volume and delay are set in the Windows app."
-)
+SOUND_HINTS = {
+    "off": "Sound stays on the computer that makes it.",
+    "to-mac": (
+        "Whatever Windows plays is sent to the Mac and mixed with the Mac's own "
+        "sound, so listen on the Mac. Turn the Windows volume all the way down to "
+        "silence this PC: the Mac still gets the sound at full strength."
+    ),
+    "to-pc": (
+        "Whatever the Mac plays is sent to this PC and mixed with its own sound, so "
+        "listen on Windows. The Mac asks for Screen & System Audio Recording "
+        "permission the first time, because that is macOS's only way to share sound."
+    ),
+}
+MAC_SOUND_HINT = "The direction, volume and delay are set in the Windows app."
 
 
 class Events(QObject):
@@ -110,7 +120,10 @@ class App(QMainWindow):
         self.peer = self.host = self.controller = self.receiver = None
         self.capture = self.player = None
         self.sound_format = (48000, 2)
-        self.mac_wants_sound = True
+        self.sending = False
+        self.peer_sound = None
+        self.sent_sound = None
+        self.sound_problem = ""
         self.active = False
         self.last_clip = None
         self.backend = None
@@ -130,6 +143,8 @@ class App(QMainWindow):
         self.latency = (
             latency if latency in [value for _, value in LATENCIES] else DEFAULT_LATENCY
         )
+        direction = self.config.get("direction", "off")
+        self.direction = direction if direction in DIRECTIONS else "off"
         if self.preview:
             self.displays = [Screen(0, 0, 1920, 1080, "Display 1 · 1920 × 1080 (main)")]
         elif self.is_windows:
@@ -252,27 +267,35 @@ class App(QMainWindow):
         sound_row.setSpacing(24)
         switch = QVBoxLayout()
         switch.setSpacing(6)
-        self.sound_toggle = QCheckBox(
-            "Send this PC's sound to the Mac"
-            if self.is_windows
-            else "Play the Windows sound on this Mac"
-        )
-        self.sound_toggle.setChecked(
-            self.config.get("sound", not self.is_windows) is not False
-        )
-        self.sound_toggle.toggled.connect(self._sound_changed)
-        switch.addWidget(self.sound_toggle)
-        self.sound_status = label(
-            SOUND_HINT if self.is_windows else MAC_SOUND_HINT, "muted", True
-        )
+        if self.is_windows:
+            self.direction_picker = QComboBox()
+            for name, value in DIRECTION_NAMES:
+                self.direction_picker.addItem(name, value)
+            self.direction_picker.setCurrentIndex(
+                max(0, self.direction_picker.findData(self.direction))
+            )
+            self.direction_picker.setAccessibleName("Which way sound travels")
+            self.direction_picker.currentIndexChanged.connect(self._direction_changed)
+            switch.addWidget(field("Which way sound travels", self.direction_picker))
+        else:
+            self.sound_toggle = QCheckBox("Allow sound sharing on this Mac")
+            self.sound_toggle.setChecked(self.config.get("sound", True) is not False)
+            self.sound_toggle.toggled.connect(self._sound_changed)
+            switch.addWidget(self.sound_toggle)
+        self.sound_status = label("", "muted", True)
         switch.addWidget(self.sound_status)
+        if not self.is_windows:
+            self.recording_button = Button("Allow sound recording", variant="yellow")
+            self.recording_button.clicked.connect(self.allow_recording)
+            self.recording_button.setVisible(False)
+            switch.addWidget(self.recording_button, 0, Qt.AlignmentFlag.AlignLeft)
         switch.addStretch()
         sound_row.addLayout(switch, 3)
 
         knobs = QVBoxLayout()
         knobs.setSpacing(6)
         volume_row = QHBoxLayout()
-        volume_row.addWidget(label("Volume on the Mac", "field"))
+        volume_row.addWidget(label("Volume where it plays", "field"))
         volume_row.addStretch()
         self.volume_label = label(f"{self.volume}%", "badge")
         volume_row.addWidget(self.volume_label)
@@ -281,7 +304,7 @@ class App(QMainWindow):
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setSingleStep(5)
         self.volume_slider.setValue(self.volume)
-        self.volume_slider.setAccessibleName("Sound volume on the Mac")
+        self.volume_slider.setAccessibleName("Sound volume where it plays")
         self.volume_slider.valueChanged.connect(self._volume_changed)
         self.volume_slider.sliderReleased.connect(self._save)
         knobs.addWidget(self.volume_slider)
@@ -297,7 +320,7 @@ class App(QMainWindow):
         sound_row.addLayout(knobs, 2)
         sound_layout.addLayout(sound_row)
         if not self.is_windows:
-            # The Mac can refuse the sound, but the Windows app sets how it plays.
+            # The Mac can refuse sound sharing, but Windows decides how it works.
             self.volume_slider.setEnabled(False)
             self.latency_picker.setEnabled(False)
         outer.addWidget(sound_card)
@@ -367,6 +390,7 @@ class App(QMainWindow):
         footer.addWidget(help_button)
         outer.addLayout(footer)
         self._draw_desk()
+        self._show_sound()
         self._show_idle()
 
     def _show_idle(self):
@@ -412,7 +436,8 @@ class App(QMainWindow):
                         "side": self.side,
                         "speed": self.speed,
                         "clipboard": self.clip_toggle.isChecked(),
-                        "sound": self.sound_toggle.isChecked(),
+                        "sound": self.is_windows or self.sound_toggle.isChecked(),
+                        "direction": self.direction,
                         "volume": self.volume,
                         "latency": self.latency,
                     }
@@ -506,7 +531,7 @@ class App(QMainWindow):
 
                 def incoming(m):
                     if m["type"] == "sound-data":
-                        if self.player:
+                        if self.player is not None:
                             self.player.push(m["samples"])
                     elif m["type"] in ("clipboard", "layout", "sound"):
                         self._post(gen, "message", m)
@@ -601,6 +626,10 @@ class App(QMainWindow):
             self.permission_button.setVisible(not granted)
             if not granted and self.peer:
                 self.peer.close("Mouse control permission was removed")
+            if self._sound_role() == "send" and self.capture is None:
+                # Permission granted in System Settings only counts after a restart,
+                # but retrying costs nothing and makes the button disappear.
+                self._apply_sound()
         try:
             fresh = self.backend.screens()
             if fresh != self.displays:
@@ -626,31 +655,51 @@ class App(QMainWindow):
         )
         self._save()
 
-    def _sound_settings(self, playing):
+    def _sound_role(self):
+        """What this computer does with sound: send it, play it, or nothing."""
+        if self.direction == "to-mac":
+            return "send" if self.is_windows else "play"
+        if self.direction == "to-pc":
+            return "play" if self.is_windows else "send"
+        return None
+
+    def _sound_allowed(self):
+        # Windows chooses the direction, so its own switch is that choice.
+        return self.is_windows or self.sound_toggle.isChecked()
+
+    def _sound_state(self):
+        """Everything the other computer needs to know about sound here."""
         rate, channels = self.sound_format
         return {
             "type": "sound",
-            "playing": playing,
+            "direction": self.direction,
             "volume": self.volume / 100,
+            "latency": self.latency,
+            "sending": self.sending,
+            "listening": self._sound_role() == "play" and self._sound_allowed(),
             "rate": rate,
             "channels": channels,
-            "latency": self.latency,
         }
 
-    def _sound_changed(self, enabled):
-        if self.is_windows:
-            self._start_sound() if enabled else self._stop_sound()
-            if not enabled:
-                self.sound_status.setText(SOUND_HINT)
-        else:
-            if not enabled:
-                self._stop_sound()
-                self.sound_status.setText("Windows sound is not played on this Mac.")
-            else:
-                self.sound_status.setText(MAC_SOUND_HINT)
-            # Windows stops sending as soon as this Mac says it is not listening.
-            if self.peer and not self.peer.closed.is_set():
-                self.peer.send(self._sound_settings(enabled))
+    def _publish_sound(self):
+        """Tell the other computer, but only when something it cares about moved."""
+        if not self.peer or self.peer.closed.is_set():
+            self.sent_sound = None
+            return
+        state = self._sound_state()
+        if state != self.sent_sound:
+            self.sent_sound = state
+            self.peer.send(state)
+
+    def _direction_changed(self, *_):
+        self.direction = self.direction_picker.currentData()
+        self.sound_problem = ""
+        self._apply_sound()
+        self._save()
+
+    def _sound_changed(self, *_):
+        self.sound_problem = ""
+        self._apply_sound()
         self._save()
 
     def _volume_changed(self, value):
@@ -658,86 +707,158 @@ class App(QMainWindow):
         self.volume_label.setText(f"{value}%")
         if self.player:
             self.player.set_volume(value / 100)
-        self._send_sound_settings()
+        self._publish_sound()
 
     def _latency_changed(self, *_):
         self.latency = self.latency_picker.currentData()
-        self._send_sound_settings()
+        if self.player is not None and (self.peer_sound or {}).get("sending"):
+            self._start_player()
+        self._publish_sound()
         self._save()
 
-    def _send_sound_settings(self):
-        if self.is_windows and self.peer and not self.peer.closed.is_set():
-            self.peer.send(self._sound_settings(self.capture is not None))
+    def _apply_sound(self):
+        """Match capture and playback to the direction both computers agreed on."""
+        connected = bool(self.peer) and not self.peer.closed.is_set()
+        role = self._sound_role() if self._sound_allowed() and connected else None
+        peer = self.peer_sound or {}
+        if role == "send" and peer.get("listening", True):
+            self._start_capture()
+        else:
+            self._stop_capture()
+        if role == "play" and peer.get("sending"):
+            self._start_player()
+        else:
+            self._stop_player()
+        self._publish_sound()
+        self._show_sound()
 
-    def _start_sound(self):
-        """Windows: open loopback capture and tell the Mac how to play it."""
-        if (
-            self.preview
-            or not self.is_windows
-            or self.capture
-            or not self.sound_toggle.isChecked()
-            or not self.mac_wants_sound
-            or not self.peer
-            or self.peer.closed.is_set()
-        ):
+    def _start_capture(self):
+        if self.capture is not None or self.preview:
             return
-        peer = self.peer
         try:
-            from . import wasapi
+            if self.is_windows:
+                from . import wasapi
 
-            capture = wasapi.LoopbackCapture(
-                peer.send_sound,
-                on_format=lambda rate, channels: self._post(
-                    None, "sound_format", rate, channels
-                ),
-                on_error=lambda text: self._post(None, "sound_error", text),
-            )
-            self.sound_format = capture.start()
+                capture = wasapi.LoopbackCapture(
+                    self._captured, self._sound_format_found, self._sound_failed
+                )
+            else:
+                if not self.backend.screen_recording():
+                    self._ask_for_recording()
+                    return
+                from . import screensound
+
+                capture = screensound.SystemSoundCapture(
+                    self._captured, self._sound_format_found, self._sound_failed
+                )
+            capture.start()
             self.capture = capture
         except Exception as exc:
-            self.sound_status.setText(str(exc))
-            return
-        peer.send(self._sound_settings(True))
-        rate, channels = self.sound_format
-        self.sound_status.setText(
-            f"Sending Windows sound · {rate // 1000} kHz"
-            + (" stereo" if channels == 2 else " mono")
-        )
+            self.sound_problem = str(exc)
 
-    def _stop_sound(self):
-        if self.capture:
+    def _captured(self, chunk):
+        """Called from the capture thread, so it only ever queues."""
+        if self.peer:
+            self.peer.send_sound(chunk)
+
+    def _sound_format_found(self, rate, channels):
+        self._post(None, "sound_format", rate, channels)
+
+    def _sound_failed(self, reason):
+        self._post(None, "sound_error", reason)
+
+    def _stop_capture(self):
+        if self.capture is not None:
             self.capture.stop()
             self.capture = None
-            if self.peer and not self.peer.closed.is_set():
-                self.peer.send(self._sound_settings(False))
-        if self.player:
-            self.player.stop()
+        self.sending = False
 
-    def _play_sound(self, m):
-        """Mac: follow the format, volume and delay the Windows app asked for."""
-        self.volume_slider.setValue(round(m["volume"] * 100))
-        self.latency_picker.setCurrentIndex(
-            max(0, self.latency_picker.findData(m["latency"]))
-        )
-        if not m["playing"] or not self.sound_toggle.isChecked():
-            if self.player:
-                self.player.stop()
-            if m["playing"] and self.peer and not self.peer.closed.is_set():
-                self.peer.send(self._sound_settings(False))
-            self.sound_status.setText(
-                MAC_SOUND_HINT
-                if self.sound_toggle.isChecked()
-                else "Windows sound is not played on this Mac."
-            )
-            return
+    def _start_player(self):
+        peer = self.peer_sound or {}
         try:
             if self.player is None:
                 from .audio import SoundPlayer
 
-                self.player = SoundPlayer(self, self.sound_status.setText)
-            self.player.configure(m["rate"], m["channels"], m["latency"], m["volume"])
+                self.player = SoundPlayer(self, self._sound_playing)
+            self.player.configure(
+                peer.get("rate", 48000),
+                peer.get("channels", 2),
+                self.latency,
+                self.volume / 100,
+            )
         except Exception as exc:
-            self.sound_status.setText(str(exc))
+            self.sound_problem = str(exc)
+            self._stop_player()
+
+    def _sound_playing(self, text):
+        self.sound_problem = ""
+        self.sound_status.setText(text)
+
+    def _stop_player(self):
+        if self.player is not None:
+            self.player.stop()
+
+    def _ask_for_recording(self):
+        """macOS grants screen recording, and with it sound, only after a restart."""
+        self.sound_problem = (
+            "This Mac needs permission to share its sound: turn ClickAway on in "
+            "System Settings → Privacy & Security → Screen & System Audio "
+            "Recording, then quit ClickAway and open it again."
+        )
+        self.recording_button.setVisible(True)
+        threading.Thread(
+            target=lambda: self.backend.screen_recording(prompt=True),
+            daemon=True,
+            name="clickaway-recording-ask",
+        ).start()
+
+    def allow_recording(self):
+        if not self.preview:
+            self._ask_for_recording()
+            self._show_sound()
+
+    def _show_sound(self):
+        if not self.is_windows:
+            self.volume_slider.blockSignals(True)
+            self.volume_slider.setValue(self.volume)
+            self.volume_slider.blockSignals(False)
+            self.volume_label.setText(f"{self.volume}%")
+            self.latency_picker.blockSignals(True)
+            self.latency_picker.setCurrentIndex(
+                max(0, self.latency_picker.findData(self.latency))
+            )
+            self.latency_picker.blockSignals(False)
+            self.recording_button.setVisible(
+                self._sound_role() == "send"
+                and not self.preview
+                and not self.backend.screen_recording()
+            )
+        self.sound_status.setText(self.sound_problem or self._sound_sentence())
+
+    def _sound_sentence(self):
+        rate, channels = self.sound_format
+        role, peer = self._sound_role(), self.peer_sound or {}
+        if not self._sound_allowed():
+            return "Sound sharing is off on this Mac."
+        if role is None:
+            return SOUND_HINTS["off"] if self.is_windows else MAC_SOUND_HINT
+        if role == "send":
+            if self.sending:
+                kind = "stereo" if channels == 2 else "mono"
+                return f"Sending this computer's sound · {rate // 1000} kHz {kind}"
+            if not peer.get("listening", True):
+                return "The other computer is not playing sound right now."
+            if self.capture is not None:
+                return "Waiting for this computer to play something."
+            return self._sound_idle()
+        if peer.get("sending"):
+            return "Playing the other computer's sound."
+        return self._sound_idle()
+
+    def _sound_idle(self):
+        if not self.peer or self.peer.closed.is_set():
+            return SOUND_HINTS[self.direction] if self.is_windows else MAC_SOUND_HINT
+        return "Waiting for the other computer to share its sound."
 
     @staticmethod
     def _read_clipboard():
@@ -763,16 +884,13 @@ class App(QMainWindow):
 
     def _message(self, m):
         if m["type"] == "sound":
-            if self.is_windows:
-                # The Mac decides whether it wants to hear this PC at all.
-                self.mac_wants_sound = m["playing"]
-                if m["playing"]:
-                    self._start_sound()
-                else:
-                    self._stop_sound()
-                    self.sound_status.setText("The Mac is not playing this PC's sound.")
-            else:
-                self._play_sound(m)
+            self.peer_sound = m
+            if not self.is_windows:
+                # Windows owns the direction, volume and delay for both computers.
+                self.direction = m["direction"]
+                self.volume = round(m["volume"] * 100)
+                self.latency = m["latency"]
+            self._apply_sound()
         elif m["type"] == "layout" and not self.is_windows:
             self.side, self.speed = m["side"], m["speed"]
             self.speed_slider.setValue(round(self.speed * 100))
@@ -807,8 +925,8 @@ class App(QMainWindow):
                 self.detail.setText("The Windows mouse can now control this Mac.")
             self.status.setText("Connected")
             self.desk.connected = True
-            self.mac_wants_sound = True
-            self._start_sound()
+            self.sound_problem = ""
+            self._apply_sound()
         elif event == "message":
             self._message(args[0])
         elif event == "control":
@@ -821,9 +939,15 @@ class App(QMainWindow):
                 )
         elif event == "sound_format":
             self.sound_format = args
-            self._send_sound_settings()
+            self.sending = True
+            self.sound_problem = ""
+            self._publish_sound()
+            self._show_sound()
         elif event == "sound_error":
-            self.sound_status.setText(args[0])
+            self.sound_problem = args[0]
+            self._stop_capture()
+            self._publish_sound()
+            self._show_sound()
         elif event == "locked":
             self.stop()
             self.status.setText("Sharing stopped")
@@ -832,7 +956,8 @@ class App(QMainWindow):
             )
         elif event in ("disconnected", "failed", "not_found"):
             self.peer = None
-            self._stop_sound()
+            self.peer_sound = None
+            self._apply_sound()
             if self.controller:
                 self.controller.detach()
             self.desk.connected = False
@@ -862,7 +987,7 @@ class App(QMainWindow):
 
     def stop(self):
         self.generation += 1
-        self._stop_sound()
+        self.peer_sound = None
         if self.controller:
             self.controller.detach()
         if self.host:
@@ -875,6 +1000,7 @@ class App(QMainWindow):
             self.receiver.release()
         self.active = False
         self.desk.connected = False
+        self._apply_sound()
         self._show_idle()
         self.action.setText("Start sharing" if self.is_windows else "Connect")
         self._set_inputs_enabled(True)

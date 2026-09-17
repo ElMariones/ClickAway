@@ -9,7 +9,7 @@ from ctypes import wintypes as W
 import threading
 import time
 
-from .audio import CHUNK_MS, to_int16
+from .audio import CHUNK_MS, Chunker, to_int16
 
 ole32 = C.WinDLL("ole32")
 
@@ -255,66 +255,50 @@ class Stream:
 class LoopbackCapture:
     """Streams the PC's own sound to ``on_chunk`` until ``stop`` is called."""
 
+    ATTEMPTS = 5  # Give up rather than reopen a device that keeps refusing.
+
     def __init__(self, on_chunk, on_format=None, on_error=None):
         self.on_chunk = on_chunk
         self.on_format = on_format or (lambda rate, channels: None)
         self.on_error = on_error or (lambda text: None)
         self.running = threading.Event()
-        self.ready = threading.Event()
-        self.error = None
-        self.rate, self.channels = 0, 0
+        self.failures = 0
 
-    def start(self, timeout=5):
-        """Open the speakers now, so the Mac can be told the format right away."""
+    def start(self):
+        """Begin capturing. The format is reported once the device is open."""
         self.running.set()
         threading.Thread(target=self._run, daemon=True, name="clickaway-sound").start()
-        if not self.ready.wait(timeout):
-            self.stop()
-            raise RuntimeError("Windows sound capture did not start.")
-        if self.error:
-            self.stop()
-            raise RuntimeError(self.error)
-        return self.rate, self.channels
 
     def stop(self):
         self.running.clear()
 
     def _run(self):
         ole32.CoInitializeEx(None, 0)  # COINIT_MULTITHREADED
-        first = True
         while self.running.is_set():
             stream = Stream()
             try:
-                self.rate, self.channels = stream.open()
-                self.error = None
-                if not first:
-                    self.on_format(self.rate, self.channels)
-                self.ready.set()
-                first = False
+                rate, channels = stream.open()
+                self.failures = 0
+                self.on_format(rate, channels)
                 self._pump(stream)
             except Exception as exc:
-                self._failed(first, self._reason(exc))
-                first = False
+                self._failed(self._reason(exc))
             finally:
                 stream.close()
 
     def _pump(self, stream):
-        pending = bytearray()
-        chunk = stream.rate * min(stream.channels, 2) * 2 * CHUNK_MS // 1000
+        channels = min(stream.channels, 2)
+        chunker = Chunker(stream.rate * channels * 2 * CHUNK_MS // 1000, self.on_chunk)
         while self.running.is_set():
-            pending += stream.read()
-            while len(pending) >= chunk:
-                self.on_chunk(bytes(pending[:chunk]))
-                del pending[:chunk]
+            chunker.add(stream.read())
             time.sleep(CHUNK_MS / 2000)
 
-    def _failed(self, first, reason):
-        self.error = reason
-        if first:
-            self.ready.set()
+    def _failed(self, reason):
+        self.failures += 1
+        self.on_error(reason)
+        if self.failures >= self.ATTEMPTS:
             self.running.clear()
             return
-        self.on_error(reason)
         # A changed or unplugged output device comes back on its own; wait for it.
         for _ in range(20):
             if not self.running.is_set():

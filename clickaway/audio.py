@@ -44,12 +44,45 @@ def to_int16(data, channels, floating):
     return output.tobytes()
 
 
+def planes_to_int16(data, channels, frames):
+    """Channel planes laid end to end, as macOS delivers them, interleaved into samples.
+
+    Each plane holds every sample of one channel as a 32-bit float, so the left
+    channel is followed by the right one rather than alternating with it.
+    """
+    wanted = min(channels, 2)
+    if frames <= 0 or len(data) < frames * channels * 4:
+        return b""
+    scaled = array.array("h")
+    scaled.frombytes(to_int16(data[: frames * channels * 4], 1, True))
+    if wanted == 1:
+        return scaled[:frames].tobytes()
+    output = array.array("h", bytes(4 * frames))
+    output[0::2] = scaled[:frames]
+    output[1::2] = scaled[frames : 2 * frames]
+    return output.tobytes()
+
+
 def _front_pair(samples, channels):
     """Surround sound reaches the Mac as its front left and right channels."""
     kept = array.array(samples.typecode)
     for start in range(0, len(samples) - channels + 1, channels):
         kept.extend(samples[start : start + 2])
     return kept
+
+
+class Chunker:
+    """Collects captured sound and hands it on in equal pieces."""
+
+    def __init__(self, size, deliver):
+        self.size, self.deliver = size, deliver
+        self.pending = bytearray()
+
+    def add(self, data):
+        self.pending += data
+        while len(self.pending) >= self.size:
+            self.deliver(bytes(self.pending[: self.size]))
+            del self.pending[: self.size]
 
 
 class JitterBuffer:
@@ -133,7 +166,6 @@ class SoundPlayer(QObject):
         # Qt's sound module is loaded here and nowhere else, so a computer that
         # cannot play sound still gets its mouse, clipboard and everything else.
         from PySide6.QtMultimedia import (
-            QAudio,
             QAudioFormat,
             QAudioSink,
             QMediaDevices,

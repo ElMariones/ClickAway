@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clickaway"
-version = "0.4.0"
+version = "0.5.0"
 description = "Use a Windows mouse and clipboard on a Mac over the local network."
 requires-python = ">=3.12"
 dependencies = [
@@ -13,6 +13,9 @@ dependencies = [
   "pyobjc-framework-Quartz>=11,<13; sys_platform == 'darwin'",
   "pyobjc-framework-Cocoa>=11,<13; sys_platform == 'darwin'",
   "pyobjc-framework-ApplicationServices>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-ScreenCaptureKit>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-CoreMedia>=11,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-libdispatch>=11,<13; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
