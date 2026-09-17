@@ -56,6 +56,23 @@ def layout_values(layout):
     return int(rate), int(channels) or 1, int(flags)
 
 
+def block_bytes(block):
+    """Copy a CoreMedia block buffer into Python-owned bytes.
+
+    PyObjC exposes CMBlockBufferCopyDataBytes' final ``void *`` as an explicit
+    writable output argument.  It may also echo that output buffer in its return
+    tuple, so use the status from the return value but keep our owned buffer as
+    the source of truth.
+    """
+    length = CM.CMBlockBufferGetDataLength(block)
+    if not length:
+        return b""
+    output = bytearray(length)
+    result = CM.CMBlockBufferCopyDataBytes(block, 0, length, output)
+    status = result[0] if isinstance(result, tuple) else result
+    return bytes(output) if status == 0 else b""
+
+
 def samples_of(sample):
     """One sample buffer as (interleaved 16-bit samples, rate, channels)."""
     frames = CM.CMSampleBufferGetNumSamples(sample)
@@ -67,10 +84,8 @@ def samples_of(sample):
     if layout is None:
         return b"", 0, 0
     rate, channels, flags = layout_values(layout)
-    status, data = CM.CMBlockBufferCopyDataBytes(
-        block, 0, CM.CMBlockBufferGetDataLength(block)
-    )
-    if status != 0 or not data:
+    data = block_bytes(block)
+    if not data:
         return b"", 0, 0
     if not flags & FLOAT:
         return to_int16(data, channels, False), rate, min(channels, 2)

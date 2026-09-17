@@ -153,7 +153,7 @@ attempts, Windows stops sharing until you start it again.
 
 ## Current scope and validation
 
-This is **v0.5.1**, intended for a two-computer desk. The target setup is Windows 11
+This is **v0.5.2**, intended for a two-computer desk. The target setup is Windows 11
 25H2 and macOS Tahoe on an Apple Silicon Mac. Windows input hooks, network listing,
 discovery, pairing, protocol integration and automated tests are verified on the
 development PC. Physical mouse crossing, Mac permissions and behavior on a specific

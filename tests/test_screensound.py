@@ -41,10 +41,11 @@ def fake_core_media():
     module.CMSampleBufferGetFormatDescription = lambda sample: sample
     module.CMAudioFormatDescriptionGetStreamBasicDescription = lambda d: d.layout
     module.CMBlockBufferGetDataLength = lambda block: len(block.data)
-    module.CMBlockBufferCopyDataBytes = lambda block, start, count: (
-        0,
-        block.data[start : start + count],
-    )
+    def copy_data(block, start, count, output):
+        output[:count] = block.data[start : start + count]
+        return 0, output
+
+    module.CMBlockBufferCopyDataBytes = copy_data
     module.CMTimeMake = lambda value, scale: (value, scale)
     return module
 
@@ -229,6 +230,28 @@ class RealFrameworkTests(unittest.TestCase):
             self.screensound.layout_values(layout),
             (48000, 2, FLOAT | PACKED),
         )
+
+    def test_coremedia_block_buffer_copy_bridge_matches_the_reader(self):
+        import CoreMedia as CM
+
+        source = b"clickaway-audio"
+        status, block = CM.CMBlockBufferCreateWithMemoryBlock(
+            None,
+            None,
+            len(source),
+            None,
+            None,
+            0,
+            len(source),
+            0,
+            None,
+        )
+        self.assertEqual(status, 0)
+        self.assertEqual(
+            CM.CMBlockBufferReplaceDataBytes(source, block, 0, len(source)),
+            0,
+        )
+        self.assertEqual(self.screensound.block_bytes(block), source)
 
     def test_the_sound_sink_answers_the_calls_screencapturekit_makes(self):
         capture = self.screensound.SystemSoundCapture(lambda chunk: None)
