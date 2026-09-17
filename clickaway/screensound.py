@@ -60,11 +60,15 @@ def samples_of(sample):
     return to_int16(data, channels, True), rate, min(channels, 2)
 
 
-class _Sink(NSObject):
-    """Takes sample buffers off ScreenCaptureKit's queue, and stream failures."""
+class ClickAwaySoundSink(NSObject):
+    """Takes sample buffers off ScreenCaptureKit's queue, and stream failures.
+
+    Objective-C class names belong to the whole process, so this one is spelled
+    out in full rather than shortened, and the module may only be imported once.
+    """
 
     def initWithCapture_(self, capture):
-        self = objc.super(_Sink, self).init()
+        self = objc.super(ClickAwaySoundSink, self).init()
         if self is not None:
             self.capture = capture
         return self
@@ -144,7 +148,7 @@ class SystemSoundCapture:
             content = SC.SCContentFilter.alloc().initWithDisplay_excludingWindows_(
                 display, []
             )
-            self.sink = _Sink.alloc().initWithCapture_(self)
+            self.sink = ClickAwaySoundSink.alloc().initWithCapture_(self)
             self.queue = dispatch_queue_create(b"clickaway-sound", None)
             stream = SC.SCStream.alloc().initWithFilter_configuration_delegate_(
                 content, configuration, self.sink

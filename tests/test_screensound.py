@@ -174,7 +174,8 @@ class RealFrameworkTests(unittest.TestCase):
     """
 
     def setUp(self):
-        sys.modules.pop("clickaway.screensound", None)
+        # Importing it again would try to register its Objective-C class twice,
+        # which the runtime refuses, so take whatever import is already there.
         import clickaway.screensound as screensound
 
         self.screensound = screensound
@@ -198,7 +199,7 @@ class RealFrameworkTests(unittest.TestCase):
 
     def test_the_sound_sink_answers_the_calls_screencapturekit_makes(self):
         capture = self.screensound.SystemSoundCapture(lambda chunk: None)
-        sink = self.screensound._Sink.alloc().initWithCapture_(capture)
+        sink = self.screensound.ClickAwaySoundSink.alloc().initWithCapture_(capture)
         self.assertIsNotNone(sink)
         for selector in (
             b"stream:didOutputSampleBuffer:ofType:",

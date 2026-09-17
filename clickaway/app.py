@@ -124,6 +124,8 @@ class App(QMainWindow):
         self.peer_sound = None
         self.sent_sound = None
         self.sound_problem = ""
+        self.sound_failures = 0
+        self.asked_recording = False
         self.active = False
         self.last_clip = None
         self.backend = None
@@ -626,9 +628,14 @@ class App(QMainWindow):
             self.permission_button.setVisible(not granted)
             if not granted and self.peer:
                 self.peer.close("Mouse control permission was removed")
-            if self._sound_role() == "send" and self.capture is None:
-                # Permission granted in System Settings only counts after a restart,
-                # but retrying costs nothing and makes the button disappear.
+            if (
+                self._sound_role() == "send"
+                and self.capture is None
+                and self.sound_failures < 5
+                and self.backend.screen_recording()
+            ):
+                # Once permission is there, pick the sound back up by itself. Asking
+                # for permission again is left to the button, not to this timer.
                 self._apply_sound()
         try:
             fresh = self.backend.screens()
@@ -693,12 +700,12 @@ class App(QMainWindow):
 
     def _direction_changed(self, *_):
         self.direction = self.direction_picker.currentData()
-        self.sound_problem = ""
-        self._apply_sound()
-        self._save()
+        self._sound_changed()
 
     def _sound_changed(self, *_):
+        # Asking again is the point of touching the switch, so let it try afresh.
         self.sound_problem = ""
+        self.sound_failures = 0
         self._apply_sound()
         self._save()
 
@@ -806,6 +813,9 @@ class App(QMainWindow):
             "Recording, then quit ClickAway and open it again."
         )
         self.recording_button.setVisible(True)
+        if self.asked_recording:
+            return  # One system prompt is a request; a stream of them is a pest.
+        self.asked_recording = True
         threading.Thread(
             target=lambda: self.backend.screen_recording(prompt=True),
             daemon=True,
@@ -814,6 +824,7 @@ class App(QMainWindow):
 
     def allow_recording(self):
         if not self.preview:
+            self.asked_recording = False
             self._ask_for_recording()
             self._show_sound()
 
@@ -940,10 +951,12 @@ class App(QMainWindow):
         elif event == "sound_format":
             self.sound_format = args
             self.sending = True
+            self.sound_failures = 0
             self.sound_problem = ""
             self._publish_sound()
             self._show_sound()
         elif event == "sound_error":
+            self.sound_failures += 1
             self.sound_problem = args[0]
             self._stop_capture()
             self._publish_sound()
