@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clickaway"
-version = "0.2.0"
+version = "0.2.1"
 description = "Use a Windows mouse and clipboard on a Mac over the local network."
 requires-python = ">=3.12"
 dependencies = [

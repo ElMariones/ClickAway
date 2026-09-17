@@ -416,7 +416,9 @@ class App(QMainWindow):
                 elif address:
                     address = str(ipaddress.IPv4Address(address))
                 if not self.backend.accessibility(prompt=True):
-                    self.allow_access()
+                    # accessibility(prompt=True) already triggered macOS's own consent
+                    # alert; only open System Settings here, not a second AX prompt.
+                    self._open_accessibility_settings()
                     self.status.setText("Mouse control is not allowed yet")
                     self.detail.setText(
                         "Turn on ClickAway in System Settings → Privacy & Security → Accessibility, then connect again."
@@ -496,11 +498,15 @@ class App(QMainWindow):
     def allow_access(self):
         if not self.preview:
             self.backend.accessibility(prompt=True)
-            QDesktopServices.openUrl(
-                QUrl(
-                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-                )
+            self._open_accessibility_settings()
+
+    @staticmethod
+    def _open_accessibility_settings():
+        QDesktopServices.openUrl(
+            QUrl(
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             )
+        )
 
     def _health_tick(self):
         if self.preview:

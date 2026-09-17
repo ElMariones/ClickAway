@@ -64,9 +64,13 @@ Builds of every commit to `main` are also kept for 30 days as
 
 ### 2. On the Mac
 
-1. Open ClickAway from Applications.
-2. Click **Allow mouse control** and turn on ClickAway in System Settings →
-   Privacy & Security → Accessibility.
+1. Move `ClickAway.app` into Applications before opening it, if you haven't already.
+   Running it from Downloads or a mounted disk image can make macOS forget its
+   Accessibility permission on every launch.
+2. Open ClickAway from Applications. Click **Allow mouse control** and turn on
+   ClickAway in System Settings → Privacy & Security → Accessibility. If you
+   installed an earlier ClickAway build before, remove its entry from that list
+   first — see the troubleshooting table if the permission doesn't stick.
 3. Pick the Mac display to control.
 4. Type the same password and click **Connect**. If macOS asks to find devices on
    your local network, allow it, then click **Connect** again.
@@ -98,6 +102,7 @@ attempts, Windows stops sharing until you start it again.
 | Wrong password | Passwords are case-sensitive. Spaces at the start and end are ignored. |
 | Sharing stopped on its own | 10 wrong password attempts stop sharing. Click **Start sharing** again. |
 | Connected but the Mac doesn't click | Turn on Accessibility for the exact ClickAway app you are running. After replacing an unsigned build, remove the old Accessibility entry and add the new app if necessary. |
+| macOS keeps asking for Accessibility even though ClickAway is already checked in the list | The checked entry is stale: it was granted to a previous build's unsigned signature, or the app is running from a randomized, translocated path because it was never moved into Applications. Quit ClickAway completely (check Activity Monitor too), remove every "ClickAway" row from System Settings → Privacy & Security → Accessibility using **−**, confirm `ClickAway.app` is inside `/Applications`, then reopen it and grant access again from the fresh prompt. If the checkbox still doesn't stick, run `tccutil reset Accessibility io.github.elmariones.clickaway` in Terminal (with ClickAway closed) and try once more. |
 | The pointer doesn't cross | Choose the correct Windows display and side; release held mouse buttons and move a little inward before crossing again. |
 | Movement is too fast or slow | Adjust **Pointer speed** on Windows; physical PC pixels and Mac display points differ. |
 | The clipboard doesn't sync | Turn it on on both computers, copy new plain text after connecting, and keep it under 64 KiB. Images and files aren't supported. |
