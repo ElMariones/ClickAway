@@ -65,17 +65,32 @@ jobs:
           $uninstaller = Join-Path $env:LOCALAPPDATA 'Programs\ClickAway\unins000.exe'
           Start-Process -Wait -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
           if (Test-Path $installed) { throw "Uninstalling left the app behind" }
-      - name: Verify the Mac disk image
+      # Split into named steps: GitHub hides logs from anonymous visitors, but step
+      # names are public, so a failure says which check broke.
+      - name: Mac disk image mounts
         if: runner.os == 'macOS'
         run: |
           hdiutil attach dist/ClickAway-macOS-AppleSilicon.dmg -mountpoint /Volumes/ClickAwayCheck -nobrowse -readonly
-          ls -la /Volumes/ClickAwayCheck
+          ls -la@ /Volumes/ClickAwayCheck
+      - name: Mac disk image holds the app
+        if: runner.os == 'macOS'
+        run: |
           test -d /Volumes/ClickAwayCheck/ClickAway.app
-          test -L /Volumes/ClickAwayCheck/Applications
-          test -f /Volumes/ClickAwayCheck/.DS_Store
-          test -f "/Volumes/ClickAwayCheck/.background/$(ls /Volumes/ClickAwayCheck/.background)"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Volumes/ClickAwayCheck/ClickAway.app/Contents/Info.plist
-          hdiutil detach /Volumes/ClickAwayCheck
+      - name: Mac disk image holds the Applications shortcut
+        if: runner.os == 'macOS'
+        run: test -L /Volumes/ClickAwayCheck/Applications
+      - name: Mac disk image holds the Finder window settings
+        if: runner.os == 'macOS'
+        run: test -f /Volumes/ClickAwayCheck/.DS_Store
+      - name: Mac disk image holds the background artwork
+        if: runner.os == 'macOS'
+        run: |
+          find /Volumes/ClickAwayCheck -name '.background*' -maxdepth 2
+          test -n "$(find /Volumes/ClickAwayCheck -path '*.background*' -type f -print -quit)"
+      - name: Unmount the Mac disk image
+        if: ${{ always() && runner.os == 'macOS' }}
+        run: hdiutil detach /Volumes/ClickAwayCheck || true
       - uses: actions/upload-artifact@v4
         with:
           name: ClickAway-${{ matrix.name }}
