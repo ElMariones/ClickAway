@@ -6,7 +6,6 @@ import sys
 import threading
 
 from PySide6.QtCore import QObject, QTimer
-from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSink, QMediaDevices
 
 SAMPLE_BYTES = 2  # Signed 16-bit samples travel over the wire, little-endian.
 CHUNK_MS = 20
@@ -131,6 +130,15 @@ class SoundPlayer(QObject):
         self.set_volume(volume)
 
     def _open(self, rate, channels, latency):
+        # Qt's sound module is loaded here and nowhere else, so a computer that
+        # cannot play sound still gets its mouse, clipboard and everything else.
+        from PySide6.QtMultimedia import (
+            QAudio,
+            QAudioFormat,
+            QAudioSink,
+            QMediaDevices,
+        )
+
         device = QMediaDevices.defaultAudioOutput()
         if device is None or device.isNull():
             raise RuntimeError("This Mac has no sound output device.")
@@ -165,6 +173,8 @@ class SoundPlayer(QObject):
 
     def set_volume(self, volume):
         if self.sink is not None:
+            from PySide6.QtMultimedia import QAudio
+
             self.sink.setVolume(
                 QAudio.convertVolume(
                     volume,
