@@ -30,8 +30,8 @@ if is_mac:
         coll, name="ClickAway.app", icon="clickaway/assets/logo.icns",
         bundle_identifier="io.github.elmariones.clickaway",
         info_plist={
-            "CFBundleShortVersionString": "0.2.1",
-            "CFBundleVersion": "3",
+            "CFBundleShortVersionString": "0.3.0",
+            "CFBundleVersion": "4",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",
             "NSLocalNetworkUsageDescription": "ClickAway finds your Windows PC on the local network and connects to it to use its mouse and share copied text.",

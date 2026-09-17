@@ -46,8 +46,15 @@ macOS permissions. They are **not claimed complete** by CI.
     explains the required permission. Re-enable it and verify mouse injection.
 12. Test display scaling, monitor selection, resolution changes and a sleep/wake
     cycle. Changes should end sharing and require reconnecting.
-13. Verify both zipped distributions on a clean computer without Python installed.
-    Confirm the Mac build is arm64 and record OS/build versions with any issues.
+13. Verify both installers on a clean computer without Python installed. On Windows,
+    `ClickAway-Setup-x64.exe` should install without an administrator prompt, leave a
+    working Start Menu shortcut, and remove itself from Installed apps. On the Mac,
+    the disk image should open a window showing ClickAway beside the Applications
+    folder, and dragging it across should install a version that launches from
+    Applications. Confirm the Mac build is arm64 and record OS/build versions with
+    any issues.
+14. Confirm Accessibility permission survives quitting and reopening the app once it
+    has been installed into `/Applications` from the disk image.
 
 When reporting an issue, include OS versions, app version, chosen side, display
 sizes/scaling, connection status and exact reproduction steps. Do not include

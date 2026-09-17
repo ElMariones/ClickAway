@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clickaway"
-version = "0.2.1"
+version = "0.3.0"
 description = "Use a Windows mouse and clipboard on a Mac over the local network."
 requires-python = ">=3.12"
 dependencies = [
@@ -16,7 +16,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-build = ["pyinstaller>=6.16,<7"]
+build = [
+  "pyinstaller>=6.16,<7",
+  "dmgbuild>=1.6,<2; sys_platform == 'darwin'",
+]
 
 [project.gui-scripts]
 clickaway = "clickaway.app:main"

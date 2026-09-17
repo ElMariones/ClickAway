@@ -28,20 +28,27 @@ ClickAway is made for a Windows 11 PC and an Apple Silicon Mac.
 
 ## Download
 
-Download both apps from the [latest GitHub release](https://github.com/ElMariones/ClickAway/releases/latest):
+Get both installers from the [latest GitHub release](https://github.com/ElMariones/ClickAway/releases/latest):
 
-- **Windows 11 (x64):** `ClickAway-Windows-x64.zip`. Unzip it and open
-  `ClickAway/ClickAway.exe`. Keep the `_internal` folder beside the executable.
-- **Mac with Apple Silicon (M1 or newer):** `ClickAway-macOS-AppleSilicon.zip`.
-  Unzip it and move `ClickAway.app` into Applications. It runs natively on arm64.
+- **Windows 11 (x64):** `ClickAway-Setup-x64.exe`. Run it and follow the wizard. It
+  installs for your user only, so there is no administrator prompt, and it adds a
+  Start Menu shortcut and an entry in Installed apps for removing it later.
+- **Mac with Apple Silicon (M1 or newer):** `ClickAway-macOS-AppleSilicon.dmg`. Open
+  it and drag ClickAway onto the Applications folder shown in the window, then open
+  ClickAway from Applications. It runs natively on arm64.
 
-`SHA256SUMS.txt` on the release page lets you verify both downloads. Install the
-same version on both computers; versions with different pairing protocols can't connect.
+These are development builds, so each one asks for confirmation the first time.
+Windows SmartScreen may need **More info → Run anyway**. The Mac app is ad-hoc signed
+and **not Apple-notarized**, so macOS blocks the first launch: open System Settings →
+Privacy & Security and click **Open Anyway** next to ClickAway.
 
-These are development builds. The Windows executable is unsigned, so SmartScreen
-may ask you to choose **More info → Run anyway**. The Mac app is ad-hoc signed and
-**not Apple-notarized**, so macOS blocks the first launch. Open System Settings →
-Privacy & Security, click **Open Anyway** next to ClickAway and confirm.
+If you would rather not use an installer, `ClickAway-Windows-x64.zip` and
+`ClickAway-macOS-AppleSilicon.zip` contain the same apps as plain folders. On the Mac,
+still move `ClickAway.app` into Applications yourself: opened from Downloads or from
+the disk image, macOS forgets its Accessibility permission on every launch.
+
+`SHA256SUMS.txt` on the release page lets you verify any download. Install the same
+version on both computers; versions with different pairing protocols can't connect.
 
 Builds of every commit to `main` are also kept for 30 days as
 [GitHub Actions artifacts](https://github.com/ElMariones/ClickAway/actions/workflows/build.yml)
@@ -51,7 +58,8 @@ Builds of every commit to `main` are also kept for 30 days as
 
 ### 1. On Windows
 
-1. Connect both computers to the same network and open ClickAway.
+1. Install ClickAway with `ClickAway-Setup-x64.exe`, connect both computers to the
+   same network, and open ClickAway from the Start Menu.
 2. Under **Layout**, choose **Mac on the left** or **Mac on the right**, and pick the
    Windows display whose edge faces the Mac.
 3. Under **Connection**, pick the network the Mac is on. Wi-Fi networks are listed by
@@ -64,9 +72,9 @@ Builds of every commit to `main` are also kept for 30 days as
 
 ### 2. On the Mac
 
-1. Move `ClickAway.app` into Applications before opening it, if you haven't already.
-   Running it from Downloads or a mounted disk image can make macOS forget its
-   Accessibility permission on every launch.
+1. Open `ClickAway-macOS-AppleSilicon.dmg` and drag ClickAway onto the Applications
+   folder in that window. Opening the app straight from the disk image or from
+   Downloads makes macOS forget its Accessibility permission on every launch.
 2. Open ClickAway from Applications. Click **Allow mouse control** and turn on
    ClickAway in System Settings → Privacy & Security → Accessibility. If you
    installed an earlier ClickAway build before, remove its entry from that list
@@ -171,11 +179,18 @@ python -m clickaway --preview
 python -m clickaway --preview-mac
 python scripts/render_preview.py
 python scripts/make_icons.py
+python scripts/make_dmg_background.py
 ```
 
 The preview commands cannot capture the mouse or open a network listener. The render
 script draws the actual Qt widgets to `docs/images/`. The icon script regenerates
-`logo.ico` and `logo.icns` from `logo.svg` and needs Pillow.
+`logo.ico` and `logo.icns` from `logo.svg` and needs Pillow; the background script
+redraws the disk image artwork in `packaging/`.
+
+`scripts/build.py` also builds the installer for the platform it runs on: the Windows
+wizard with [Inno Setup](https://jrsoftware.org/isinfo.php) (`packaging/clickaway.iss`,
+skipped when Inno Setup isn't installed) and the Mac disk image with
+[dmgbuild](https://dmgbuild.readthedocs.io) (`packaging/dmg_settings.py`).
 
 See [Architecture](docs/architecture.md), [Manual acceptance checks](docs/testing.md)
 and [third-party notices](THIRD_PARTY_NOTICES.md).

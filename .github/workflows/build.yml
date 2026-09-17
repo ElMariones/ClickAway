@@ -21,7 +21,7 @@ jobs:
           - os: macos-15
             name: macOS-AppleSilicon
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,12 +36,53 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Check native platform imports
         run: python -c "import importlib, sys; importlib.import_module('clickaway.windows' if sys.platform == 'win32' else 'clickaway.macos')"
+      - name: Ensure Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc -and -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /? | Select-Object -First 1
       - name: Build
         run: python scripts/build.py
+      - name: Verify the Windows installer installs and uninstalls
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Resolve-Path dist\ClickAway-Setup-x64.exe
+          Start-Process -Wait -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=install.log'
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\ClickAway\ClickAway.exe'
+          if (-not (Test-Path $installed)) {
+            Get-Content install.log -Tail 40
+            throw "The installer did not place $installed"
+          }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\ClickAway.lnk")) {
+            throw "The installer did not create a Start Menu shortcut"
+          }
+          "Installed version: $((Get-Item $installed).VersionInfo.FileVersion)"
+          $uninstaller = Join-Path $env:LOCALAPPDATA 'Programs\ClickAway\unins000.exe'
+          Start-Process -Wait -FilePath $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
+          if (Test-Path $installed) { throw "Uninstalling left the app behind" }
+      - name: Verify the Mac disk image
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil attach dist/ClickAway-macOS-AppleSilicon.dmg -mountpoint /Volumes/ClickAwayCheck -nobrowse -readonly
+          ls -la /Volumes/ClickAwayCheck
+          test -d /Volumes/ClickAwayCheck/ClickAway.app
+          test -L /Volumes/ClickAwayCheck/Applications
+          test -f /Volumes/ClickAwayCheck/.DS_Store
+          test -f "/Volumes/ClickAwayCheck/.background/$(ls /Volumes/ClickAwayCheck/.background)"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Volumes/ClickAwayCheck/ClickAway.app/Contents/Info.plist
+          hdiutil detach /Volumes/ClickAwayCheck
       - uses: actions/upload-artifact@v4
         with:
           name: ClickAway-${{ matrix.name }}
-          path: dist/*.zip
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -61,6 +102,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum *.zip > SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" *.zip SHA256SUMS.txt \
+          sha256sum *.exe *.dmg *.zip > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" *.exe *.dmg *.zip SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --title "ClickAway $GITHUB_REF_NAME" --generate-notes
