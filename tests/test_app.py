@@ -65,6 +65,44 @@ class AppTests(unittest.TestCase):
             self.window._message({"type": "clipboard", "text": "Should be ignored"})
             clipboard.return_value.setText.assert_called_once()
 
+    def test_a_mac_that_will_not_play_sound_asks_windows_to_stop_sending(self):
+        mac = App(preview_mac=True)
+        self.addCleanup(mac.close)
+        mac.peer = self.peer
+        mac.sound_toggle.setChecked(False)
+        self.peer.send.reset_mock()
+        mac._play_sound(
+            {
+                "type": "sound",
+                "playing": True,
+                "volume": 0.5,
+                "rate": 48000,
+                "channels": 2,
+                "latency": 120,
+            }
+        )
+        self.assertIsNone(mac.player)
+        self.peer.send.assert_called_once()
+        self.assertFalse(self.peer.send.call_args[0][0]["playing"])
+
+    def test_the_mac_follows_the_volume_and_delay_windows_chose(self):
+        mac = App(preview_mac=True)
+        self.addCleanup(mac.close)
+        mac.peer = self.peer
+        mac._play_sound(
+            {
+                "type": "sound",
+                "playing": False,
+                "volume": 0.25,
+                "rate": 48000,
+                "channels": 2,
+                "latency": 250,
+            }
+        )
+        self.assertEqual(mac.volume_slider.value(), 25)
+        self.assertEqual(mac.volume_label.text(), "25%")
+        self.assertEqual(mac.latency_picker.currentData(), 250)
+
     def test_late_connect_after_cancel_is_closed(self):
         late_peer = Mock()
         self.window.generation = 4

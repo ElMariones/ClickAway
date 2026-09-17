@@ -4,8 +4,9 @@
 
 Use your Windows mouse on the Mac next to it. Move the pointer past the shared
 screen edge to control the Mac, and move it back to return to Windows. Plain text
-copied on one computer can be pasted on the other. The computers connect directly
-over your local network.
+copied on one computer can be pasted on the other, and the PC's sound can play
+through the Mac, so a game on Windows and a video on the Mac are heard together in
+one pair of headphones. The computers connect directly over your local network.
 
 ClickAway is made for a Windows 11 PC and an Apple Silicon Mac.
 
@@ -20,6 +21,9 @@ ClickAway is made for a Windows 11 PC and an Apple Silicon Mac.
 - Adjustable pointer speed for different screen sizes and Retina scaling.
 - Plain-text clipboard sync in both directions, up to 64 KiB per copy. It can be
   turned off on either computer, and only copies made after connecting are synced.
+- Windows sound sent to the Mac and played alongside the Mac's own sound, with a
+  volume slider and a choice of delay. Either computer can switch it off. Sound
+  never delays the mouse: a chunk that cannot be sent at once is dropped instead.
 - **Ctrl + Alt + F12** on the Windows keyboard returns the pointer immediately.
 - Pairing with a password you choose. The password never crosses the network: it is
   checked with SPAKE2 inside a TLS connection, so each connection attempt can test
@@ -64,8 +68,11 @@ Builds of every commit to `main` are also kept for 30 days as
    Windows display whose edge faces the Mac.
 3. Under **Connection**, pick the network the Mac is on. Wi-Fi networks are listed by
    name, followed by this PC's IP address on that network.
-4. Type a password of at least 6 characters and click **Start sharing**.
-5. If Windows Firewall asks, allow ClickAway. If Windows treats your Wi-Fi as a
+4. Under **Sound**, turn on **Send this PC's sound to the Mac** if you want to hear
+   Windows through the Mac, and set the volume and delay. Nothing is sent until a
+   Mac is connected.
+5. Type a password of at least 6 characters and click **Start sharing**.
+6. If Windows Firewall asks, allow ClickAway. If Windows treats your Wi-Fi as a
    *Public* network, allow public networks too, or set the network to *Private* in
    Settings → Network & internet → Wi-Fi → your network. ClickAway uses TCP and UDP
    port 49624.
@@ -80,9 +87,11 @@ Builds of every commit to `main` are also kept for 30 days as
    installed an earlier ClickAway build before, remove its entry from that list
    first — see the troubleshooting table if the permission doesn't stick.
 3. Pick the Mac display to control.
-4. Type the same password and click **Connect**. If macOS asks to find devices on
+4. Under **Sound**, leave **Play the Windows sound on this Mac** on to hear the PC
+   through this Mac, or clear it to keep the Mac quiet; Windows then stops sending.
+5. Type the same password and click **Connect**. If macOS asks to find devices on
    your local network, allow it, then click **Connect** again.
-5. ClickAway looks for the PC automatically. If it isn't found, a **Windows IP
+6. ClickAway looks for the PC automatically. If it isn't found, a **Windows IP
    address** field appears. Type the address shown in the Windows app's status
    (for example `192.168.1.20`) and connect again.
 
@@ -97,6 +106,14 @@ back across the Mac's edge to return. The pointer keeps its relative height. Pre
 Copy plain text on either computer and paste it on the other with that computer's
 keyboard. The keyboard itself stays with its own computer. Both apps can be
 minimized; closing either one ends the connection.
+
+With **Sound** on, everything the PC plays is copied to the Mac and mixed with what
+the Mac is already playing, so listen on the Mac. The PC keeps playing through its
+own speakers as well; turn the Windows volume all the way down to silence them,
+because what the Mac receives is taken before that volume knob and stays at full
+strength. Sound travels one way, from Windows to the Mac. Use **Low · 60 ms** when
+sound and picture must line up on the PC screen and the network is good, or
+**Safe · 250 ms** on busy Wi-Fi where sound breaks up.
 
 If the connection drops, click **Connect** on the Mac again; the password keeps
 working while Windows is sharing. Stopping sharing ends it. After 10 wrong password
@@ -113,13 +130,17 @@ attempts, Windows stops sharing until you start it again.
 | macOS keeps asking for Accessibility even though ClickAway is already checked in the list | The checked entry is stale: it was granted to a previous build's unsigned signature, or the app is running from a randomized, translocated path because it was never moved into Applications. Quit ClickAway completely (check Activity Monitor too), remove every "ClickAway" row from System Settings → Privacy & Security → Accessibility using **−**, confirm `ClickAway.app` is inside `/Applications`, then reopen it and grant access again from the fresh prompt. If the checkbox still doesn't stick, run `tccutil reset Accessibility io.github.elmariones.clickaway` in Terminal (with ClickAway closed) and try once more. |
 | The pointer doesn't cross | Choose the correct Windows display and side; release held mouse buttons and move a little inward before crossing again. |
 | Movement is too fast or slow | Adjust **Pointer speed** on Windows; physical PC pixels and Mac display points differ. |
+| No sound on the Mac | Turn it on in both apps: **Send this PC's sound to the Mac** on Windows and **Play the Windows sound on this Mac** on the Mac. The PC must actually be playing something, since ClickAway copies the sound Windows is producing. Check the Mac's own output device and volume. |
+| Sound breaks up or crackles | Choose a longer **Sound delay** on Windows. Wi-Fi with a weak signal drops chunks; sound is dropped rather than delaying the mouse. Stereo sound uses about 1.5 Mbit/s. |
+| Sound lags behind the picture | Choose **Low · 60 ms**. Some delay always remains; the network and the Mac's own audio buffer both add to it. |
+| The Mac doesn't play sound after changing headphones on Windows | ClickAway follows the PC's new default output device on its own within a few seconds. If it doesn't, switch **Send this PC's sound to the Mac** off and on again. |
 | The clipboard doesn't sync | Turn it on on both computers, copy new plain text after connecting, and keep it under 64 KiB. Images and files aren't supported. |
 | Displays changed | Connect again after changing resolution, arrangement or monitors. Sharing pauses when a display change is detected. |
 | The shortcut can't be registered | Close another ClickAway instance or an app using Ctrl+Alt+F12, then start sharing again. |
 
 ## Current scope and validation
 
-This is **v0.2**, intended for a two-computer desk. The target setup is Windows 11
+This is **v0.4**, intended for a two-computer desk. The target setup is Windows 11
 25H2 and macOS Tahoe on an Apple Silicon Mac. Windows input hooks, network listing,
 discovery, pairing, protocol integration and automated tests are verified on the
 development PC. Physical mouse crossing, Mac permissions and behavior on a specific
@@ -132,6 +153,11 @@ does not prove them.
 - One selected display per computer for crossings; left/right layouts only.
 - No keyboard sharing, rich-text/image/file clipboard, file dragging between
   computers, Bluetooth transport, internet relay or automatic startup.
+- Sound travels from Windows to the Mac only. macOS does not let an app record what
+  it is playing without a virtual audio device, so Mac sound cannot be sent back.
+- Sound is uncompressed 16-bit stereo at the PC's own sample rate, taken from the
+  PC's default output device and mixed down to two channels. Per-app selection,
+  microphone input and sound while Windows plays nothing are out of scope.
 - A held-button drag stays on its current computer; release before crossing.
 - The Windows cursor is parked while controlling the Mac; hiding it is best effort
   because individual Windows apps can reset their cursor shape.
@@ -167,7 +193,7 @@ python3 -m venv .venv
 
 Build the distributable archive with `python scripts/build.py` from that virtual
 environment. It appears under `dist/`. The GitHub workflow builds Windows x64 and
-macOS arm64 separately; pushing a version tag such as `v0.2.0` also publishes both
+macOS arm64 separately; pushing a version tag such as `v0.4.0` also publishes both
 archives as a GitHub release. Shipping a notarized Mac build requires an Apple
 Developer signing identity and notarization credentials, which are not stored in this repo.
 
@@ -201,6 +227,8 @@ The native adapters use [Windows low-level mouse hooks](https://learn.microsoft.
 [GetAdaptersAddresses](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses),
 [WlanQueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/wlanapi/nf-wlanapi-wlanqueryinterface)
 and [Apple Quartz mouse events](https://developer.apple.com/documentation/coregraphics/cgevent/init(mouseeventsource:mousetype:mousecursorposition:mousebutton:)).
+Sound is captured with [WASAPI loopback recording](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording)
+and played through [QAudioSink](https://doc.qt.io/qt-6/qaudiosink.html).
 Pairing follows [SPAKE2 (RFC 9382)](https://www.rfc-editor.org/rfc/rfc9382) over the
 [RFC 3526](https://www.rfc-editor.org/rfc/rfc3526) 2048-bit group. The interface uses
 Qt and the [Outfit typeface](https://github.com/google/fonts/tree/main/ofl/outfit).

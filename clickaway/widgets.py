@@ -248,6 +248,7 @@ QLabel#cardTitle { font-size: 20px; font-weight: 600; }
 QLabel#badge { background: #e9efff; color: #2856e8; border-radius: 15px; padding: 8px 14px; font-weight: 600; font-size: 11px; }
 QFrame#deskCard { background: #edf3ff; border: 1px solid #d8e3fb; border-radius: 23px; }
 QFrame#settingsCard { background: #fff3cc; border: 1px solid #f4e4ae; border-radius: 23px; }
+QFrame#soundCard { background: #edf3ff; border: 1px solid #d8e3fb; border-radius: 23px; }
 QFrame#pairCard { background: white; border: 1px solid #e7e8ed; border-radius: 23px; }
 QFrame#statusCard { background: #eaf0ff; border-radius: 16px; }
 QLabel#status { font-weight: 600; font-size: 15px; color: #2856e8; }

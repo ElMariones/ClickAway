@@ -21,7 +21,7 @@ output = Path("docs/images")
 output.mkdir(parents=True, exist_ok=True)
 for mac in (False, True):
     window = App(preview=True, preview_mac=mac)
-    window.resize(1000, 850 if mac else 800)
+    window.resize(1000, 940 if mac else 900)
     window.show()
     app.processEvents()
     name = "mac" if mac else "windows"

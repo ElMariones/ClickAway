@@ -66,6 +66,16 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(self.host_messages.get(timeout=3), clipboard)
         self.assertIn(pc.sock.version(), ("TLSv1.2", "TLSv1.3"))
 
+    def test_sound_reaches_the_mac_as_raw_samples(self):
+        self.client()
+        pc, _ = self.accepted.get(timeout=3)
+        samples = bytes(range(256)) * 8
+        self.assertTrue(pc.send_sound(samples))
+        self.assertEqual(
+            self.mac_messages.get(timeout=3),
+            {"type": "sound-data", "samples": samples},
+        )
+
     def test_wrong_password_is_rejected_and_listener_survives(self):
         with self.assertRaises(PairingError):
             self.client("desk lamb")
