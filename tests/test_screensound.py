@@ -29,7 +29,8 @@ class Sample:
 
     def __init__(self, data, frames, rate=48000, channels=2, flags=FLOAT | PACKED):
         self.data, self.frames = data, frames
-        self.layout = Layout(rate, channels, flags)
+        # PyObjC 12 dereferences AudioStreamBasicDescription pointers into tuples.
+        self.layout = (rate, 0, flags, 0, 0, 0, channels, 0, 0)
         self.has_block = True
 
 
@@ -126,6 +127,12 @@ class MacSoundTests(unittest.TestCase):
         sample = Sample(data, 2, flags=SIGNED_INTEGER | PACKED)
         self.assertEqual(self.samples(sample), ([1, -1, 32767, -32768], 48000, 2))
 
+    def test_attribute_style_stream_descriptions_remain_supported(self):
+        data = struct.pack("<2f", 0.5, -0.5)
+        sample = Sample(data, 1)
+        sample.layout = Layout(44100, 2, FLOAT | PACKED)
+        self.assertEqual(self.samples(sample), ([16384, -16384], 44100, 2))
+
     def test_a_sample_buffer_without_sound_is_ignored(self):
         empty = Sample(b"", 0)
         self.assertEqual(self.screensound.samples_of(empty), (b"", 0, 0))
@@ -196,6 +203,32 @@ class RealFrameworkTests(unittest.TestCase):
         self.assertTrue(configuration.excludesCurrentProcessAudio())
         self.assertEqual(configuration.sampleRate(), self.screensound.RATE)
         self.assertEqual(configuration.channelCount(), self.screensound.CHANNELS)
+
+    def test_coremedia_stream_description_bridge_matches_the_reader(self):
+        import CoreMedia as CM
+
+        # AudioStreamBasicDescription: rate, format ID, flags, packet/frame sizes,
+        # channels, bits per channel, reserved. This needs no recording permission.
+        asbd = (
+            48000.0,
+            int.from_bytes(b"lpcm", "big"),
+            FLOAT | PACKED,
+            8,
+            1,
+            8,
+            2,
+            32,
+            0,
+        )
+        status, description = CM.CMAudioFormatDescriptionCreate(
+            None, asbd, 0, None, 0, None, None, None
+        )
+        self.assertEqual(status, 0)
+        layout = CM.CMAudioFormatDescriptionGetStreamBasicDescription(description)
+        self.assertEqual(
+            self.screensound.layout_values(layout),
+            (48000, 2, FLOAT | PACKED),
+        )
 
     def test_the_sound_sink_answers_the_calls_screencapturekit_makes(self):
         capture = self.screensound.SystemSoundCapture(lambda chunk: None)

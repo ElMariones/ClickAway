@@ -35,6 +35,27 @@ def describe(error, what):
     ).replace("  ", " ")
 
 
+def layout_values(layout):
+    """Return ``(rate, channels, flags)`` from a Core Audio stream description.
+
+    PyObjC 12 bridges ``const AudioStreamBasicDescription *`` as a plain tuple,
+    while older/test bridges can expose the C fields as attributes.  Accept both:
+    the tuple follows the native ASBD field order documented by Core Audio.
+    """
+    try:
+        rate = layout.mSampleRate
+        channels = layout.mChannelsPerFrame
+        flags = layout.mFormatFlags
+    except AttributeError:
+        try:
+            rate = layout[0]
+            flags = layout[2]
+            channels = layout[6]
+        except (IndexError, TypeError) as exc:
+            raise TypeError("unexpected Core Audio stream description") from exc
+    return int(rate), int(channels) or 1, int(flags)
+
+
 def samples_of(sample):
     """One sample buffer as (interleaved 16-bit samples, rate, channels)."""
     frames = CM.CMSampleBufferGetNumSamples(sample)
@@ -45,9 +66,7 @@ def samples_of(sample):
     layout = CM.CMAudioFormatDescriptionGetStreamBasicDescription(description)
     if layout is None:
         return b"", 0, 0
-    rate = int(layout.mSampleRate)
-    channels = int(layout.mChannelsPerFrame) or 1
-    flags = int(layout.mFormatFlags)
+    rate, channels, flags = layout_values(layout)
     status, data = CM.CMBlockBufferCopyDataBytes(
         block, 0, CM.CMBlockBufferGetDataLength(block)
     )
