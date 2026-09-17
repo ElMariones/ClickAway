@@ -165,5 +165,58 @@ class MacSoundTests(unittest.TestCase):
         self.assertFalse(capture.running.is_set())
 
 
+@unittest.skipUnless(sys.platform == "darwin", "Needs the real macOS frameworks")
+class RealFrameworkTests(unittest.TestCase):
+    """Checks every call the stand-ins cannot: that macOS really has these.
+
+    A misspelled selector or a missing framework would otherwise only show up on
+    someone's Mac, so this runs wherever the Mac app is built.
+    """
+
+    def setUp(self):
+        sys.modules.pop("clickaway.screensound", None)
+        import clickaway.screensound as screensound
+
+        self.screensound = screensound
+
+    def test_the_stream_takes_the_settings_clickaway_asks_for(self):
+        import CoreMedia as CM
+        import ScreenCaptureKit as SC
+
+        configuration = SC.SCStreamConfiguration.alloc().init()
+        configuration.setCapturesAudio_(True)
+        configuration.setExcludesCurrentProcessAudio_(True)
+        configuration.setSampleRate_(self.screensound.RATE)
+        configuration.setChannelCount_(self.screensound.CHANNELS)
+        configuration.setWidth_(2)
+        configuration.setHeight_(2)
+        configuration.setMinimumFrameInterval_(CM.CMTimeMake(1, 1))
+        self.assertTrue(configuration.capturesAudio())
+        self.assertTrue(configuration.excludesCurrentProcessAudio())
+        self.assertEqual(configuration.sampleRate(), self.screensound.RATE)
+        self.assertEqual(configuration.channelCount(), self.screensound.CHANNELS)
+
+    def test_the_sound_sink_answers_the_calls_screencapturekit_makes(self):
+        capture = self.screensound.SystemSoundCapture(lambda chunk: None)
+        sink = self.screensound._Sink.alloc().initWithCapture_(capture)
+        self.assertIsNotNone(sink)
+        for selector in (
+            b"stream:didOutputSampleBuffer:ofType:",
+            b"stream:didStopWithError:",
+        ):
+            with self.subTest(selector=selector):
+                self.assertTrue(sink.respondsToSelector_(selector))
+
+    def test_a_queue_for_the_sound_can_be_made(self):
+        from libdispatch import dispatch_queue_create
+
+        self.assertIsNotNone(dispatch_queue_create(b"clickaway-sound-test", None))
+
+    def test_asking_about_recording_permission_never_raises(self):
+        from clickaway import macos
+
+        self.assertIn(macos.screen_recording(), (True, False))
+
+
 if __name__ == "__main__":
     unittest.main()
