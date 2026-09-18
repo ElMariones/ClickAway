@@ -466,6 +466,20 @@ class App(QMainWindow):
     def _post(self, generation, event, *args):
         self.events.event.emit(generation, event, args)
 
+    def _incoming(self, generation, m):
+        """One frame, on the network thread, for whichever computer received it.
+
+        Sound goes straight to the speakers: a chunk lands every 20 ms, and it
+        must not queue behind the window's own work on the Qt thread. Everything
+        else is handed over to be dealt with there.
+        """
+        if m["type"] == "sound-data":
+            player = self.player
+            if player is not None:
+                player.push(m["samples"])
+            return
+        self._post(generation, "message", m)
+
     def _set_inputs_enabled(self, enabled):
         self.password_input.setEnabled(enabled)
         if self.is_windows:
@@ -502,7 +516,7 @@ class App(QMainWindow):
                 self.host = Host(
                     password,
                     lambda peer, confirm: self._post(gen, "connected", peer, confirm),
-                    lambda m: self._post(gen, "message", m),
+                    lambda m: self._incoming(gen, m),
                     lambda reason: self._post(gen, "disconnected", reason),
                     on_locked=lambda: self._post(gen, "locked"),
                     address=address,
@@ -532,11 +546,8 @@ class App(QMainWindow):
                 receiver = self.receiver
 
                 def incoming(m):
-                    if m["type"] == "sound-data":
-                        if self.player is not None:
-                            self.player.push(m["samples"])
-                    elif m["type"] in ("clipboard", "layout", "sound"):
-                        self._post(gen, "message", m)
+                    if m["type"] in ("sound-data", "clipboard", "layout", "sound"):
+                        self._incoming(gen, m)
                     elif m["type"] in ("enter", "move", "button", "scroll", "leave"):
                         receiver.handle(m)
                         if m["type"] in ("enter", "leave"):
@@ -894,7 +905,13 @@ class App(QMainWindow):
                     )
 
     def _message(self, m):
-        if m["type"] == "sound":
+        if m["type"] == "sound-data":
+            # Sound is meant to be played from the network thread and never to
+            # arrive here. If it ever does, play it: the closing branch below
+            # would otherwise read it as a stray message and end the session.
+            if self.player is not None:
+                self.player.push(m["samples"])
+        elif m["type"] == "sound":
             self.peer_sound = m
             if not self.is_windows:
                 # Windows owns the direction, volume and delay for both computers.

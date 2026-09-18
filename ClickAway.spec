@@ -30,7 +30,7 @@ if is_mac:
         coll, name="ClickAway.app", icon="clickaway/assets/logo.icns",
         bundle_identifier="io.github.elmariones.clickaway",
         info_plist={
-            "CFBundleShortVersionString": "0.5.2",
+            "CFBundleShortVersionString": "0.5.3",
             "CFBundleVersion": "8",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass": "NSApplication",

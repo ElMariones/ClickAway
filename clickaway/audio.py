@@ -1,4 +1,4 @@
-"""Playing the Windows sound stream on the Mac, and the pure helpers it needs."""
+"""Playing the sound stream from the other computer, and the pure helpers it needs."""
 
 import array
 from collections import deque
@@ -138,7 +138,9 @@ class JitterBuffer:
 
 
 class SoundPlayer(QObject):
-    """Plays the streamed Windows sound through the Mac's speakers.
+    """Plays the streamed sound from the other computer through this one's speakers.
+
+    Either computer can be the one listening, so nothing here names a platform.
 
     ``configure``, ``set_volume`` and ``stop`` belong to the Qt thread, which owns
     the speakers. ``push`` is safe to call from the network thread: it only fills
@@ -173,15 +175,13 @@ class SoundPlayer(QObject):
 
         device = QMediaDevices.defaultAudioOutput()
         if device is None or device.isNull():
-            raise RuntimeError("This Mac has no sound output device.")
+            raise RuntimeError("This computer has no sound output device.")
         wanted = QAudioFormat()
         wanted.setSampleRate(rate)
         wanted.setChannelCount(channels)
         wanted.setSampleFormat(QAudioFormat.SampleFormat.Int16)
         if not device.isFormatSupported(wanted):
-            raise RuntimeError(
-                f"{device.description()} cannot play {rate} Hz sound from Windows."
-            )
+            raise RuntimeError(f"{device.description()} cannot play {rate} Hz sound.")
         self.sink = QAudioSink(device, wanted, self)
         # Twice the chosen delay, so a late pump cannot starve the speakers.
         self.sink.setBufferSize(byte_count(rate, channels, latency * 2))
@@ -195,7 +195,7 @@ class SoundPlayer(QObject):
             raise RuntimeError(f"{device.description()} could not be opened.")
         self.timer.start(max(5, CHUNK_MS // 2))
         self.on_status(
-            f"Playing Windows sound · {rate // 1000} kHz"
+            f"Playing the other computer's sound · {rate // 1000} kHz"
             + (" stereo" if channels == 2 else " mono")
         )
 
